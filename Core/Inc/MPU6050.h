@@ -10,6 +10,9 @@
 
 #include "main.h"
 #include <math.h>
+#include "cmsis_os.h"
+
+extern osThreadId_t MPU6050Handle;
 
 #define MPU6050Addr 0xD0
 
@@ -34,6 +37,15 @@
 #define MPU6050_GYRO_YOUT_L     0x46
 #define MPU6050_GYRO_ZOUT_H     0x47
 #define MPU6050_GYRO_ZOUT_L     0x48
+
+typedef struct {
+    float Q_angle;     // 角度数据置信度
+    float Q_bias;      // 陀螺仪漂移置信度
+    float R_measure;   // 测量噪声置信度
+    float angle;       // 计算出的最优角度
+    float bias;        // 计算出的最优陀螺仪漂移
+    float P[2][2];     // 误差协方差矩阵
+} Kalman_t;
 
 typedef struct {
     int16_t AccelX_Raw;
@@ -63,12 +75,19 @@ typedef struct {
     int32_t GyroX_Offset;
     int32_t GyroY_Offset;
     int32_t GyroZ_Offset;
+    
+    Kalman_t KalmanPitch; // Pitch 卡尔曼参数
+    Kalman_t KalmanRoll;  // Roll 卡尔曼参数
+    
+    uint32_t LastTick;
 } MPU6050_Data_t;
 
 void MPU6050_WriteReg(uint8_t RegAdress, uint8_t Data);
 void MPU6050_ReadReg(uint8_t RegAdress, uint8_t *Data);
 void MPU6050_ReadMultiReg(uint8_t RegAdress, uint8_t *Data, uint16_t Length);
 void MPU6050_Init(void);
+void Kalman_Init(Kalman_t *Kalman);
+float Kalman_GetAngle(Kalman_t *Kalman, float newAngle, float newRate, float dt);
 void MPU6050_ReadAccel(int16_t *AccelX, int16_t *AccelY, int16_t *AccelZ);
 void MPU6050_ReadGyro(int16_t *GyroX, int16_t *GyroY, int16_t *GyroZ);
 void MPU6050_ReadAll(MPU6050_Data_t *DataStruct);
@@ -78,5 +97,7 @@ void MPU6050_ProcessData(MPU6050_Data_t *DataStruct);
 
 float MPU6050_Accel_To_G_16G(int16_t AccelRaw);
 float MPU6050_Gyro_To_DegPerSec_2000(int16_t GyroRaw);
+
+void MPU6050(void *argument);
 
 #endif /* INC_MPU6050_H_ */

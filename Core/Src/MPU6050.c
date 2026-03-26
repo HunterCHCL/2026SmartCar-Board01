@@ -49,9 +49,66 @@ void MPU6050_ReadMultiReg(uint8_t RegAdress, uint8_t *Data, uint16_t Length)
 @brief  MPU6050初始化
 @return 无
 */
+void Kalman_Init(Kalman_t *Kalman)
+{
+    Kalman->Q_angle = 0.001f;
+    Kalman->Q_bias = 0.003f;
+    Kalman->R_measure = 0.03f;
+    Kalman->angle = 0.0f;
+    Kalman->bias = 0.0f;
+
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            Kalman->P[i][j] = 0.0f;
+        }
+    }
+}
+
+/*
+@brief 卡尔曼滤波核心算法
+@param newAngle 加速度计计算的角度量测值
+@param newRate  陀螺仪角速度量测值
+@param dt       采样周期(秒)
+*/
+float Kalman_GetAngle(Kalman_t *Kalman, float newAngle, float newRate, float dt)
+{
+    // 1. 预测当前状态 (先验估计)
+    // 根据上一课角速度及偏差修正，计算当前角度预测值
+    float rate = newRate - Kalman->bias;
+    Kalman->angle += dt * rate;
+
+    // 2. 预测误差协方差
+    Kalman->P[0][0] += dt * (dt*Kalman->P[1][1] - Kalman->P[0][1] - Kalman->P[1][0] + Kalman->Q_angle);
+    Kalman->P[0][1] -= dt * Kalman->P[1][1];
+    Kalman->P[1][0] -= dt * Kalman->P[1][1];
+    Kalman->P[1][1] += Kalman->Q_bias * dt;
+
+    // 3. 计算卡尔曼增益
+    float S = Kalman->P[0][0] + Kalman->R_measure; // 预估量与测量量的误差
+    float K[2]; // 增益系数
+    K[0] = Kalman->P[0][0] / S;
+    K[1] = Kalman->P[1][0] / S;
+
+    // 4. 更新误差量 (后验估计), 校正角度
+    float y = newAngle - Kalman->angle; // 量测值与预测值的残差
+    Kalman->angle += K[0] * y;
+    Kalman->bias += K[1] * y;
+
+    // 5. 更新误差协方差矩阵
+    float P00_temp = Kalman->P[0][0];
+    float P01_temp = Kalman->P[0][1];
+
+    Kalman->P[0][0] -= K[0] * P00_temp;
+    Kalman->P[0][1] -= K[0] * P01_temp;
+    Kalman->P[1][0] -= K[1] * P00_temp;
+    Kalman->P[1][1] -= K[1] * P01_temp;
+
+    return Kalman->angle;
+}
+
 void MPU6050_Init(void)
 {
-    HAL_Delay(100);
+    osDelay(100);
     MPU6050_WriteReg(MPU6050_PWR_MGMT_1, 0x01);     // 电源管理寄存器1，取消睡眠模式，时钟源为X轴陀螺仪
 	MPU6050_WriteReg(MPU6050_PWR_MGMT_2, 0x00);		// 电源管理寄存器2，所有轴均不待机
 	MPU6050_WriteReg(MPU6050_SMPLRT_DIV, 0x09);		// 采样率分频，100Hz
@@ -141,7 +198,7 @@ void MPU6050_Calibrate(MPU6050_Data_t *DataStruct)
         gx += DataStruct->GyroX_Raw;
         gy += DataStruct->GyroY_Raw;
         gz += DataStruct->GyroZ_Raw;
-        HAL_Delay(10);
+        osDelay(10);
     }
 
     DataStruct->AccelX_Offset = ax / num_samples;
@@ -178,9 +235,11 @@ void MPU6050_ProcessData(MPU6050_Data_t *DataStruct)
     DataStruct->GyroY = gy / 16.4f;
     DataStruct->GyroZ = gz / 16.4f;
 
-    // 3. 姿态解算 (互补滤波)
-    float dt = 0.01f; // 100Hz采样率
-    float alpha = 0.98f; // 互补系数
+    // 3. 姿态解算 (卡尔曼滤波)
+    uint32_t CurrentTick = osKernelGetTickCount();
+    float dt = (CurrentTick - DataStruct->LastTick) / (float)osKernelGetTickFreq();
+    if(dt == 0.0f || dt > 1.0f) dt = 0.01f;
+    DataStruct->LastTick = CurrentTick;
 
     // 加速度计计算的角度项
     float accelPitch = atan2f(DataStruct->AccelY, DataStruct->AccelZ) * 57.29578f; // 180/PI
@@ -190,11 +249,9 @@ void MPU6050_ProcessData(MPU6050_Data_t *DataStruct)
     float prevPitch = DataStruct->Pitch;
     float prevRoll = DataStruct->Roll;
 
-    // 互补滤波融合 (标准角度解算，通常在 ±180° 范围内)
-    DataStruct->Pitch = alpha * (DataStruct->Pitch + DataStruct->GyroX * dt) + (1.0f - alpha) * accelPitch;
-    DataStruct->Roll = alpha * (DataStruct->Roll + DataStruct->GyroY * dt) + (1.0f - alpha) * accelRoll;
+    DataStruct->Pitch = Kalman_GetAngle(&DataStruct->KalmanPitch, accelPitch, DataStruct->GyroX, dt);
+    DataStruct->Roll = Kalman_GetAngle(&DataStruct->KalmanRoll, accelRoll, DataStruct->GyroY, dt);
     
-    // 处理角度突变 (跨越 ±180°)，并累加到总角度中
     float dPitch = DataStruct->Pitch - prevPitch;
     float dRoll = DataStruct->Roll - prevRoll;
 
@@ -205,6 +262,29 @@ void MPU6050_ProcessData(MPU6050_Data_t *DataStruct)
     if (dRoll > 180.0f) dRoll -= 360.0f;
     else if (dRoll < -180.0f) dRoll += 360.0f;
 
-    // Yaw轴仅靠积分，由于没有磁力计，随着时间会有漂移
     DataStruct->Yaw += DataStruct->GyroZ * dt;
+}
+
+/*
+@brief  FreeRTOS的MPU6050任务函数
+@return 无
+*/
+void MPU6050Task(void *argument)
+{
+    static MPU6050_Data_t mpu_data = {0};
+    
+    MPU6050_Init();
+    Kalman_Init(&mpu_data.KalmanPitch);
+    Kalman_Init(&mpu_data.KalmanRoll);
+    
+    osDelay(50);
+    MPU6050_Calibrate(&mpu_data);
+    mpu_data.LastTick = osKernelGetTickCount();
+
+    for(;;)
+    {
+        MPU6050_ReadAll(&mpu_data);
+        MPU6050_ProcessData(&mpu_data);
+        osDelay(10);
+    }
 }
