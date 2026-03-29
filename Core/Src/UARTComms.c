@@ -5,9 +5,18 @@
  *      Author: HunterCHCL
  */
 #include "verification.h"
+#include "main.h"
+#include "usart.h"
+#include "UARTComms.h"
+#include "string.h"
+#include "cmsis_os.h"
 
-uint8_t receivebuffer[50];
-uint8_t globaBuffer[50];
+extern osThreadId_t CommsHandle;
+
+#define COMMS_SIGNAL_RECEIVED 0x01
+
+uint8_t receiveBuffer[50];
+uint8_t globalBuffer[50];
 uint8_t receivedData[48];
 uint8_t receivedCMD;
 uint8_t BT24receiveBuffer[50];
@@ -19,7 +28,7 @@ void UARTComms_Transmmit_Data(UART_HandleTypeDef *UARTPort,uint8_t cmd,uint8_t *
 {
 	globalBuffer[0]=cmd;
 	memcpy(&globalBuffer[1], data, len);
-	CRC08_Append(globalBuffer, len + 2);
+	Verification_AddXOR(globalBuffer, len+1);
 	memmove(globalBuffer+2, globalBuffer, len + 2);
 	globalBuffer[0] = PackageHead1;
 	globalBuffer[1] = PackageHead2;
@@ -71,7 +80,9 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 	if(huart==&UARTComms_Port)
 	{
 		UARTComms_Receive_Data(&UARTComms_Port, receiveBuffer, Size);
-
+        if (CommsHandle != NULL) {
+            osThreadFlagsSet(CommsHandle, COMMS_SIGNAL_RECEIVED);
+        }
 		HAL_UARTEx_ReceiveToIdle_DMA(&UARTComms_Port, receiveBuffer, sizeof(receiveBuffer));
 	}
     else if(huart==&UARTComms_BT24_Port)
@@ -85,4 +96,43 @@ void UARTComms_Init(void)
 {
 	HAL_UARTEx_ReceiveToIdle_DMA(&UARTComms_Port, receiveBuffer, sizeof(receiveBuffer));
     HAL_UARTEx_ReceiveToIdle_DMA(&UARTComms_BT24_Port, BT24receiveBuffer, sizeof(BT24receiveBuffer));
+}
+
+void UARTComms_Task(void *argument)
+{
+    UARTComms_Init();
+
+    float alpha=0, beta=0;
+    uint32_t flags;
+
+    while(1)
+    {
+        flags = osThreadFlagsWait(COMMS_SIGNAL_RECEIVED, osFlagsWaitAny, osWaitForever);
+
+        if (flags & COMMS_SIGNAL_RECEIVED)
+        {
+            if(receivedCMD == 0x01)//转向
+            {
+                memcpy(&alpha, &receivedData[0], 4);//角度（单位：度）
+                memcpy(&beta, &receivedData[4], 4);//旋转速度（单位：度/秒）
+                
+            }
+            else if(receivedCMD == 0x02)//平移
+            {
+                memcpy(&alpha, &receivedData[0], 4);//x距离（单位：cm）
+                memcpy(&beta, &receivedData[4], 4);//y距离（单位：cm）
+            }
+            else if(receivedCMD == 0x03)//设置巡航速度
+            {
+                memcpy(&alpha, &receivedData[0], 4);//x速度（单位：cm/s）
+                memcpy(&beta, &receivedData[4], 4);//y速度（单位：cm/s）
+            }
+            else if(receivedCMD == 0x04)//设置旋转速度
+            {
+                memcpy(&alpha, &receivedData[0], 4);//旋转速度（单位：度/秒）
+            }
+            Car_UpdateTarget(receivedCMD, alpha, beta);
+            receivedCMD = 0;
+        }
+    }
 }

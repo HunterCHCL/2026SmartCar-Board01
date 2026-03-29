@@ -8,6 +8,9 @@
 #ifndef INC_UARTCOMMS_H_
 #define INC_UARTCOMMS_H_
 
+#include "main.h"
+#include "usart.h"
+
 #define PackageHead1 0xFA
 #define PackageHead2 0xAF
 

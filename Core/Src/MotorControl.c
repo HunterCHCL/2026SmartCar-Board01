@@ -7,6 +7,7 @@
 
 #include "MotorControl.h"
 #include "tim.h"
+#include "cmsis_os.h"
 #include <math.h>
 
 Motor_HandleTypeDef Motor_FL;
@@ -24,6 +25,8 @@ void MotorControl_Init(void)
 
     HAL_TIM_PWM_Start(&Motor_FL_PWM_TIMEBASE, Motor_FL_PWM);
     HAL_TIM_PWM_Start(&Motor_FR_PWM_TIMEBASE, Motor_FR_PWM);
+    HAL_TIM_Encoder_Start(&Motor_FL_Encoder_Timebase, TIM_CHANNEL_ALL);
+    HAL_TIM_Encoder_Start(&Motor_FR_Encoder_Timebase, TIM_CHANNEL_ALL);
     // HAL_TIM_PWM_Start(&Motor_RL_PWM_TIMEBASE, Motor_RL_PWM);
     // HAL_TIM_PWM_Start(&Motor_RR_PWM_TIMEBASE, Motor_RR_PWM);
 }
@@ -268,3 +271,42 @@ void Motor_FR_Update(float current_velocity)
 //     fp32 pwm = PID_calc(&Motor_RR.velocity_pid, current_velocity, Motor_RR.target_velocity);
 //     Motor_RR_Drive(pwm);
 // }
+
+float Motor_FL_ReadEncoder(void)
+{
+    int16_t count = (int16_t)__HAL_TIM_GET_COUNTER(&Motor_FL_Encoder_Timebase);
+    __HAL_TIM_SET_COUNTER(&Motor_FL_Encoder_Timebase, 0);
+    
+    // Calculate RPM
+    // Total counts per wheel revolution = Motor_Encoder_Resolution * 4 * Motor_Transmission_Ratio
+    // dt = 10ms (100Hz), so RPM = (count / total_counts) * 100 * 60
+    // Note: Assuming TIM2 and TIM3 are configured to Encoder Mode TI1 and TI2 (4x resolution)
+    float rpm = (float)count * 6000.0f / (Motor_Encoder_Resolution * 4.0f * Motor_Transmission_Ratio);
+    return rpm;
+}
+
+float Motor_FR_ReadEncoder(void)
+{
+    int16_t count = (int16_t)__HAL_TIM_GET_COUNTER(&Motor_FR_Encoder_Timebase);
+    __HAL_TIM_SET_COUNTER(&Motor_FR_Encoder_Timebase, 0);
+    
+    // Reverse count if motor orientation is mirrored physically
+    float rpm = (float)count * 6000.0f / (Motor_Encoder_Resolution * 4.0f * Motor_Transmission_Ratio);
+    return rpm;
+}
+
+void MotorTask(void *argument)
+{
+    MotorControl_Init();
+    
+    while(1)
+    {
+        float current_velocity_FL = Motor_FL_ReadEncoder();
+        float current_velocity_FR = Motor_FR_ReadEncoder();
+        
+        Motor_FL_Update(current_velocity_FL);
+        Motor_FR_Update(current_velocity_FR);
+        
+        osDelay(10);
+    }
+}

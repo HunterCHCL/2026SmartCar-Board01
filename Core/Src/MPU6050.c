@@ -4,287 +4,218 @@
  *  Created on: Feb 24, 2026
  *      Author: HunterCHCL
  */
-#define MPU6050Addr 0xD0
+
 #include "i2c.h"
-#define MPU6050_I2C hi2c1
 #include "MPU6050.h"
+#include <math.h>
 
-uint8_t sendBuffer[2];
+#define MPU6050_I2C hi2c1
 
-/*
-@brief  MPU6050写寄存器
-@param  RegAdress 寄存器地址
-@param  Data 要写入寄存器的数据
-*/
+#define MPU6050_ACCEL_LSB_PER_G        2048.0f
+#define MPU6050_GYRO_LSB_PER_DPS_2000  16.4f
+#define GRAVITY_CM_S2                  980.665f
+#define DEG_TO_RAD                     0.01745329252f
+#define MPU6050_DT_FALLBACK            0.01f
+#define MPU6050_ACCEL_DEADBAND_CM_S2   3.0f
+#define MPU6050_STILL_GYRO_DPS_TH      1.5f
+#define MPU6050_STILL_ACC_XY_CM_S2_TH  12.0f
+#define MPU6050_STILL_ACC_NORM_G_TH    0.08f
+#define MPU6050_STILL_CONFIRM_SAMPLES  10U
+#define MPU6050_BIAS_LEARN_ALPHA       0.01f
+
+static float MPU6050_GetDeltaTime(MPU6050_Data_t *DataStruct)
+{
+    uint32_t currentTick = osKernelGetTickCount();
+    float dt = (currentTick - DataStruct->LastTick) / (float)osKernelGetTickFreq();
+
+    if (dt <= 0.0f || dt > 1.0f) {
+        dt = MPU6050_DT_FALLBACK;
+    }
+
+    DataStruct->LastTick = currentTick;
+    return dt;
+}
+
 void MPU6050_WriteReg(uint8_t RegAdress, uint8_t Data)
 {
     uint8_t pBuffer[2] = {RegAdress, Data};
     HAL_I2C_Master_Transmit(&MPU6050_I2C, MPU6050Addr, pBuffer, 2, HAL_MAX_DELAY);
 }
 
-/*
-@brief  MPU6050读寄存器
-@param  RegAdress 寄存器地址
-@param  Data 读取寄存器的数据指针
-*/
 void MPU6050_ReadReg(uint8_t RegAdress, uint8_t *Data)
 {
     HAL_I2C_Master_Transmit(&MPU6050_I2C, MPU6050Addr, &RegAdress, 1, HAL_MAX_DELAY);
     HAL_I2C_Master_Receive(&MPU6050_I2C, MPU6050Addr, Data, 1, HAL_MAX_DELAY);
 }
 
-/*
-@brief  MPU6050连续读寄存器
-@param  RegAdress 寄存器起始地址
-@param  Data 数据存储指针
-@param  Length 读取长度
-*/
 void MPU6050_ReadMultiReg(uint8_t RegAdress, uint8_t *Data, uint16_t Length)
 {
     HAL_I2C_Master_Transmit(&MPU6050_I2C, MPU6050Addr, &RegAdress, 1, HAL_MAX_DELAY);
     HAL_I2C_Master_Receive(&MPU6050_I2C, MPU6050Addr, Data, Length, HAL_MAX_DELAY);
 }
 
-/*
-@brief  MPU6050初始化
-@return 无
-*/
-void Kalman_Init(Kalman_t *Kalman)
-{
-    Kalman->Q_angle = 0.001f;
-    Kalman->Q_bias = 0.003f;
-    Kalman->R_measure = 0.03f;
-    Kalman->angle = 0.0f;
-    Kalman->bias = 0.0f;
-
-    for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 2; j++) {
-            Kalman->P[i][j] = 0.0f;
-        }
-    }
-}
-
-/*
-@brief 卡尔曼滤波核心算法
-@param newAngle 加速度计计算的角度量测值
-@param newRate  陀螺仪角速度量测值
-@param dt       采样周期(秒)
-*/
-float Kalman_GetAngle(Kalman_t *Kalman, float newAngle, float newRate, float dt)
-{
-    // 1. 预测当前状态 (先验估计)
-    // 根据上一课角速度及偏差修正，计算当前角度预测值
-    float rate = newRate - Kalman->bias;
-    Kalman->angle += dt * rate;
-
-    // 2. 预测误差协方差
-    Kalman->P[0][0] += dt * (dt*Kalman->P[1][1] - Kalman->P[0][1] - Kalman->P[1][0] + Kalman->Q_angle);
-    Kalman->P[0][1] -= dt * Kalman->P[1][1];
-    Kalman->P[1][0] -= dt * Kalman->P[1][1];
-    Kalman->P[1][1] += Kalman->Q_bias * dt;
-
-    // 3. 计算卡尔曼增益
-    float S = Kalman->P[0][0] + Kalman->R_measure; // 预估量与测量量的误差
-    float K[2]; // 增益系数
-    K[0] = Kalman->P[0][0] / S;
-    K[1] = Kalman->P[1][0] / S;
-
-    // 4. 更新误差量 (后验估计), 校正角度
-    float y = newAngle - Kalman->angle; // 量测值与预测值的残差
-    Kalman->angle += K[0] * y;
-    Kalman->bias += K[1] * y;
-
-    // 5. 更新误差协方差矩阵
-    float P00_temp = Kalman->P[0][0];
-    float P01_temp = Kalman->P[0][1];
-
-    Kalman->P[0][0] -= K[0] * P00_temp;
-    Kalman->P[0][1] -= K[0] * P01_temp;
-    Kalman->P[1][0] -= K[1] * P00_temp;
-    Kalman->P[1][1] -= K[1] * P01_temp;
-
-    return Kalman->angle;
-}
-
 void MPU6050_Init(void)
 {
     osDelay(100);
-    MPU6050_WriteReg(MPU6050_PWR_MGMT_1, 0x01);     // 电源管理寄存器1，取消睡眠模式，时钟源为X轴陀螺仪
-	MPU6050_WriteReg(MPU6050_PWR_MGMT_2, 0x00);		// 电源管理寄存器2，所有轴均不待机
-	MPU6050_WriteReg(MPU6050_SMPLRT_DIV, 0x09);		// 采样率分频，100Hz
-	MPU6050_WriteReg(MPU6050_CONFIG, 0x06);			// 配置寄存器，DLPF 5Hz
-	MPU6050_WriteReg(MPU6050_GYRO_CONFIG, 0x18);	// 陀螺仪满量程 ±2000dps
-	MPU6050_WriteReg(MPU6050_ACCEL_CONFIG, 0x18);	// 加速度计满量程 ±16g
+    MPU6050_WriteReg(MPU6050_PWR_MGMT_1, 0x01);
+    MPU6050_WriteReg(MPU6050_PWR_MGMT_2, 0x00);
+    MPU6050_WriteReg(MPU6050_SMPLRT_DIV, 0x09);
+    MPU6050_WriteReg(MPU6050_CONFIG, 0x06);
+    MPU6050_WriteReg(MPU6050_GYRO_CONFIG, 0x18);
+    MPU6050_WriteReg(MPU6050_ACCEL_CONFIG, 0x18);
 }
 
-/*
-@brief  读取MPU6050原始数据
-@param  DataStruct MPU6050的数据结构体指针
-@return 无
-*/
 void MPU6050_ReadAll(MPU6050_Data_t *DataStruct)
 {
     uint8_t data[14];
+
     MPU6050_ReadMultiReg(MPU6050_ACCEL_XOUT_H, data, 14);
 
-    DataStruct->AccelX_Raw = (int16_t)(data[0] << 8 | data[1]);
-    DataStruct->AccelY_Raw = (int16_t)(data[2] << 8 | data[3]);
-    DataStruct->AccelZ_Raw = (int16_t)(data[4] << 8 | data[5]);
-    DataStruct->GyroX_Raw = (int16_t)(data[8] << 8 | data[9]);
-    DataStruct->GyroY_Raw = (int16_t)(data[10] << 8 | data[11]);
-    DataStruct->GyroZ_Raw = (int16_t)(data[12] << 8 | data[13]);
+    DataStruct->AccelX_Raw = (int16_t)((data[0] << 8) | data[1]);
+    DataStruct->AccelY_Raw = (int16_t)((data[2] << 8) | data[3]);
+    DataStruct->AccelZ_Raw = (int16_t)((data[4] << 8) | data[5]);
+    DataStruct->GyroZ_Raw = (int16_t)((data[12] << 8) | data[13]);
 }
 
-/*
-@brief  直接获取加速度和陀螺仪原始数据
-@param  AccX 加速度X轴原始数据指针
-@param  AccY 加速度Y轴原始数据指针
-@param  AccZ 加速度Z轴原始数据指针
-@param  GyroX 陀螺仪X轴原始数据指针
-@param  GyroY 陀螺仪Y轴原始数据指针
-@param  GyroZ 陀螺仪Z轴原始数据指针
-@return 无
-*/
-void MPU6050_GetData(int16_t *AccX, int16_t *AccY, int16_t *AccZ, int16_t *GyroX, int16_t *GyroY, int16_t *GyroZ)
+void MPU6050_ResetOdometry(MPU6050_Data_t *DataStruct)
 {
-    uint8_t data[14];
-    MPU6050_ReadMultiReg(MPU6050_ACCEL_XOUT_H, data, 14);
-    *AccX = (int16_t)(data[0] << 8 | data[1]);
-    *AccY = (int16_t)(data[2] << 8 | data[3]);
-    *AccZ = (int16_t)(data[4] << 8 | data[5]);
-    *GyroX = (int16_t)(data[8] << 8 | data[9]);
-    *GyroY = (int16_t)(data[10] << 8 | data[11]);
-    *GyroZ = (int16_t)(data[12] << 8 | data[13]);
+    DataStruct->VelX = 0.0f;
+    DataStruct->VelY = 0.0f;
+    DataStruct->PosX = 0.0f;
+    DataStruct->PosY = 0.0f;
 }
 
-/*
-@brief  转换加速度原始值为g (±16g范围)
-@param  AccelRaw 加速度原始值
-@return 转换后的g值
-*/
-float MPU6050_Accel_To_G_16G(int16_t AccelRaw)
-{
-    return AccelRaw / 2048.0f;
-}
-
-/*
-@brief  转换陀螺仪原始值为dps (±2000dps范围)
-@param  GyroRaw 陀螺仪原始值
-@return 转换后的dps值
-*/
-float MPU6050_Gyro_To_DegPerSec_2000(int16_t GyroRaw)
-{
-    return GyroRaw / 16.4f;
-}
-
-
-/*
-@brief  校准函数，静止放置时调用以更新MPU6050数据结构体中的偏移量
-@param  DataStruct MPU6050的数据结构体指针
-@return 无
-*/
 void MPU6050_Calibrate(MPU6050_Data_t *DataStruct)
 {
-    int32_t ax = 0, ay = 0, az = 0;
-    int32_t gx = 0, gy = 0, gz = 0;
-    const int num_samples = 100;
+    int32_t ax = 0;
+    int32_t ay = 0;
+    int32_t az = 0;
+    int32_t gz = 0;
+    const int numSamples = 200;
 
-    for(int i = 0; i < num_samples; i++)
-    {
+    for (int i = 0; i < numSamples; i++) {
         MPU6050_ReadAll(DataStruct);
         ax += DataStruct->AccelX_Raw;
         ay += DataStruct->AccelY_Raw;
         az += DataStruct->AccelZ_Raw;
-        gx += DataStruct->GyroX_Raw;
-        gy += DataStruct->GyroY_Raw;
         gz += DataStruct->GyroZ_Raw;
-        osDelay(10);
+        osDelay(5);
     }
 
-    DataStruct->AccelX_Offset = ax / num_samples;
-    DataStruct->AccelY_Offset = ay / num_samples;
-    DataStruct->AccelZ_Offset = (az / num_samples) - 2048; // ±16g模式下，1g = 2048 LSB
-    DataStruct->GyroX_Offset = gx / num_samples;
-    DataStruct->GyroY_Offset = gy / num_samples;
-    DataStruct->GyroZ_Offset = gz / num_samples;
+    DataStruct->AccelX_Offset = ax / numSamples;
+    DataStruct->AccelY_Offset = ay / numSamples;
+    DataStruct->AccelZ_Offset = (az / numSamples) - (int32_t)MPU6050_ACCEL_LSB_PER_G;
+    DataStruct->GyroZ_Offset = gz / numSamples;
+
+    DataStruct->Yaw = 0.0f;
+    DataStruct->GyroZ = 0.0f;
+    DataStruct->AccelBodyX = 0.0f;
+    DataStruct->AccelBodyY = 0.0f;
+    DataStruct->AccelX = 0.0f;
+    DataStruct->AccelY = 0.0f;
+    DataStruct->StationaryCount = 0U;
+    DataStruct->IsStationary = 1U;
+    MPU6050_ResetOdometry(DataStruct);
 }
 
-/*
-@brief  处理数据并解算姿态角
-@param  DataStruct MPU6050的数据结构体指针，包含原始数据、偏移量和计算结果
-@return 无
-*/
-void MPU6050_ProcessData(MPU6050_Data_t *DataStruct)
+void MPU6050_Update(MPU6050_Data_t *DataStruct)
 {
-    // 1. 减去零偏后的原始数据
-    int16_t ax = DataStruct->AccelX_Raw - DataStruct->AccelX_Offset;
-    int16_t ay = DataStruct->AccelY_Raw - DataStruct->AccelY_Offset;
-    int16_t az = DataStruct->AccelZ_Raw - DataStruct->AccelZ_Offset;
-    int16_t gx = DataStruct->GyroX_Raw - DataStruct->GyroX_Offset;
-    int16_t gy = DataStruct->GyroY_Raw - DataStruct->GyroY_Offset;
-    int16_t gz = DataStruct->GyroZ_Raw - DataStruct->GyroZ_Offset;
+    float dt;
+    int16_t axRaw;
+    int16_t ayRaw;
+    int16_t azRaw;
+    int16_t gzRaw;
+    float accelXBody;
+    float accelYBody;
+    float yawRad;
+    float accelXWorld;
+    float accelYWorld;
+    float accelNormG;
+    float accelXYNorm;
+    uint8_t stillCandidate;
 
-    // 2. 转换为物理单位
-    // ±16g -> 2048 LSB/g
-    DataStruct->AccelX = ax / 2048.0f;
-    DataStruct->AccelY = ay / 2048.0f;
-    DataStruct->AccelZ = az / 2048.0f;
+    dt = MPU6050_GetDeltaTime(DataStruct);
 
-    // ±2000dps -> 16.4 LSB/dps
-    DataStruct->GyroX = gx / 16.4f;
-    DataStruct->GyroY = gy / 16.4f;
-    DataStruct->GyroZ = gz / 16.4f;
+    axRaw = DataStruct->AccelX_Raw - (int16_t)DataStruct->AccelX_Offset;
+    ayRaw = DataStruct->AccelY_Raw - (int16_t)DataStruct->AccelY_Offset;
+    azRaw = DataStruct->AccelZ_Raw - (int16_t)DataStruct->AccelZ_Offset;
+    gzRaw = DataStruct->GyroZ_Raw - (int16_t)DataStruct->GyroZ_Offset;
 
-    // 3. 姿态解算 (卡尔曼滤波)
-    uint32_t CurrentTick = osKernelGetTickCount();
-    float dt = (CurrentTick - DataStruct->LastTick) / (float)osKernelGetTickFreq();
-    if(dt == 0.0f || dt > 1.0f) dt = 0.01f;
-    DataStruct->LastTick = CurrentTick;
-
-    // 加速度计计算的角度项
-    float accelPitch = atan2f(DataStruct->AccelY, DataStruct->AccelZ) * 57.29578f; // 180/PI
-    float accelRoll = atan2f(-DataStruct->AccelX, sqrtf(DataStruct->AccelY * DataStruct->AccelY + DataStruct->AccelZ * DataStruct->AccelZ)) * 57.29578f;
-
-    // 记录上一时刻的角度用于计算变化量 (用于累计)
-    float prevPitch = DataStruct->Pitch;
-    float prevRoll = DataStruct->Roll;
-
-    DataStruct->Pitch = Kalman_GetAngle(&DataStruct->KalmanPitch, accelPitch, DataStruct->GyroX, dt);
-    DataStruct->Roll = Kalman_GetAngle(&DataStruct->KalmanRoll, accelRoll, DataStruct->GyroY, dt);
-    
-    float dPitch = DataStruct->Pitch - prevPitch;
-    float dRoll = DataStruct->Roll - prevRoll;
-
-    // 如果变化量超过 180 度，说明发生了回绕
-    if (dPitch > 180.0f) dPitch -= 360.0f;
-    else if (dPitch < -180.0f) dPitch += 360.0f;
-
-    if (dRoll > 180.0f) dRoll -= 360.0f;
-    else if (dRoll < -180.0f) dRoll += 360.0f;
-
+    DataStruct->GyroZ = gzRaw / MPU6050_GYRO_LSB_PER_DPS_2000;
     DataStruct->Yaw += DataStruct->GyroZ * dt;
+
+    accelXBody = (axRaw / MPU6050_ACCEL_LSB_PER_G) * GRAVITY_CM_S2;
+    accelYBody = (ayRaw / MPU6050_ACCEL_LSB_PER_G) * GRAVITY_CM_S2;
+    DataStruct->AccelBodyX = accelXBody;
+    DataStruct->AccelBodyY = accelYBody;
+
+    accelNormG = sqrtf(((float)axRaw * (float)axRaw) +
+                       ((float)ayRaw * (float)ayRaw) +
+                       ((float)azRaw * (float)azRaw)) / MPU6050_ACCEL_LSB_PER_G;
+    accelXYNorm = sqrtf(accelXBody * accelXBody + accelYBody * accelYBody);
+    stillCandidate = (uint8_t)((fabsf(DataStruct->GyroZ) < MPU6050_STILL_GYRO_DPS_TH) &&
+                               (accelXYNorm < MPU6050_STILL_ACC_XY_CM_S2_TH) &&
+                               (fabsf(accelNormG - 1.0f) < MPU6050_STILL_ACC_NORM_G_TH));
+
+    if (stillCandidate != 0U) {
+        if (DataStruct->StationaryCount < MPU6050_STILL_CONFIRM_SAMPLES) {
+            DataStruct->StationaryCount++;
+        }
+    } else {
+        DataStruct->StationaryCount = 0U;
+    }
+
+    DataStruct->IsStationary = (uint8_t)(DataStruct->StationaryCount >= MPU6050_STILL_CONFIRM_SAMPLES);
+
+    yawRad = DataStruct->Yaw * DEG_TO_RAD;
+    accelXWorld = accelXBody * cosf(yawRad) - accelYBody * sinf(yawRad);
+    accelYWorld = accelXBody * sinf(yawRad) + accelYBody * cosf(yawRad);
+
+    if (fabsf(accelXWorld) < MPU6050_ACCEL_DEADBAND_CM_S2) {
+        accelXWorld = 0.0f;
+    }
+    if (fabsf(accelYWorld) < MPU6050_ACCEL_DEADBAND_CM_S2) {
+        accelYWorld = 0.0f;
+    }
+
+    DataStruct->AccelX = accelXWorld;
+    DataStruct->AccelY = accelYWorld;
+
+    if (DataStruct->IsStationary != 0U) {
+        DataStruct->VelX = 0.0f;
+        DataStruct->VelY = 0.0f;
+
+        DataStruct->GyroZ_Offset = (int32_t)((1.0f - MPU6050_BIAS_LEARN_ALPHA) * DataStruct->GyroZ_Offset +
+                                             MPU6050_BIAS_LEARN_ALPHA * DataStruct->GyroZ_Raw);
+        DataStruct->AccelX_Offset = (int32_t)((1.0f - MPU6050_BIAS_LEARN_ALPHA) * DataStruct->AccelX_Offset +
+                                              MPU6050_BIAS_LEARN_ALPHA * DataStruct->AccelX_Raw);
+        DataStruct->AccelY_Offset = (int32_t)((1.0f - MPU6050_BIAS_LEARN_ALPHA) * DataStruct->AccelY_Offset +
+                                              MPU6050_BIAS_LEARN_ALPHA * DataStruct->AccelY_Raw);
+        DataStruct->AccelZ_Offset = (int32_t)((1.0f - MPU6050_BIAS_LEARN_ALPHA) * DataStruct->AccelZ_Offset +
+                                              MPU6050_BIAS_LEARN_ALPHA * (DataStruct->AccelZ_Raw - (int16_t)MPU6050_ACCEL_LSB_PER_G));
+    } else {
+        DataStruct->PosX += DataStruct->VelX * dt + 0.5f * accelXWorld * dt * dt;
+        DataStruct->PosY += DataStruct->VelY * dt + 0.5f * accelYWorld * dt * dt;
+        DataStruct->VelX += accelXWorld * dt;
+        DataStruct->VelY += accelYWorld * dt;
+    }
 }
 
-/*
-@brief  FreeRTOS的MPU6050任务函数
-@return 无
-*/
+MPU6050_Data_t mpu_data = {0};
+
 void MPU6050Task(void *argument)
 {
-    static MPU6050_Data_t mpu_data = {0};
-    
+    (void)argument;
+
     MPU6050_Init();
-    Kalman_Init(&mpu_data.KalmanPitch);
-    Kalman_Init(&mpu_data.KalmanRoll);
-    
     osDelay(50);
+
     MPU6050_Calibrate(&mpu_data);
     mpu_data.LastTick = osKernelGetTickCount();
 
-    for(;;)
-    {
+    for (;;) {
         MPU6050_ReadAll(&mpu_data);
-        MPU6050_ProcessData(&mpu_data);
+        MPU6050_Update(&mpu_data);
         osDelay(10);
     }
 }

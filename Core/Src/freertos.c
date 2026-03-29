@@ -68,6 +68,13 @@ const osThreadAttr_t MPU6050_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
+/* Definitions for Control */
+osThreadId_t ControlHandle;
+const osThreadAttr_t Control_attributes = {
+  .name = "Control",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -77,6 +84,7 @@ const osThreadAttr_t MPU6050_attributes = {
 void CommsTask(void *argument);
 extern void MotorTask(void *argument);
 extern void MPU6050Task(void *argument);
+extern void CarControlTask(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -115,6 +123,9 @@ void MX_FREERTOS_Init(void) {
 
   /* creation of MPU6050 */
   MPU6050Handle = osThreadNew(MPU6050Task, NULL, &MPU6050_attributes);
+
+  /* creation of Control */
+  ControlHandle = osThreadNew(CarControlTask, NULL, &Control_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */

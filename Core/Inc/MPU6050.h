@@ -9,7 +9,6 @@
 #define INC_MPU6050_H_
 
 #include "main.h"
-#include <math.h>
 #include "cmsis_os.h"
 
 extern osThreadId_t MPU6050Handle;
@@ -39,65 +38,51 @@ extern osThreadId_t MPU6050Handle;
 #define MPU6050_GYRO_ZOUT_L     0x48
 
 typedef struct {
-    float Q_angle;     // 角度数据置信度
-    float Q_bias;      // 陀螺仪漂移置信度
-    float R_measure;   // 测量噪声置信度
-    float angle;       // 计算出的最优角度
-    float bias;        // 计算出的最优陀螺仪漂移
-    float P[2][2];     // 误差协方差矩阵
-} Kalman_t;
-
-typedef struct {
     int16_t AccelX_Raw;
     int16_t AccelY_Raw;
     int16_t AccelZ_Raw;
-    
-    int16_t GyroX_Raw;
-    int16_t GyroY_Raw;
+
     int16_t GyroZ_Raw;
 
-    float AccelX;
-    float AccelY;
-    float AccelZ;
+    float AccelBodyX;//cm/s^2（车体坐标系）
+    float AccelBodyY;//cm/s^2
 
-    float GyroX;
-    float GyroY;
-    float GyroZ;
+    float AccelX;//cm/s^2（世界坐标系）
+    float AccelY;//cm/s^2
 
-    float Pitch;
-    float Roll;
-    float Yaw;
+    float VelX;//cm/s
+    float VelY;//cm/s
 
-    // 校准偏移量
+    float PosX;//cm
+    float PosY;//cm
+
+    float GyroZ;//度/秒
+    float Yaw;//度
+
+    // Sensor offsets from static calibration
     int32_t AccelX_Offset;
     int32_t AccelY_Offset;
     int32_t AccelZ_Offset;
-    int32_t GyroX_Offset;
-    int32_t GyroY_Offset;
     int32_t GyroZ_Offset;
-    
-    Kalman_t KalmanPitch; // Pitch 卡尔曼参数
-    Kalman_t KalmanRoll;  // Roll 卡尔曼参数
-    
+
     uint32_t LastTick;
+    uint16_t StationaryCount;
+    uint8_t IsStationary;
 } MPU6050_Data_t;
 
 void MPU6050_WriteReg(uint8_t RegAdress, uint8_t Data);
 void MPU6050_ReadReg(uint8_t RegAdress, uint8_t *Data);
 void MPU6050_ReadMultiReg(uint8_t RegAdress, uint8_t *Data, uint16_t Length);
+
 void MPU6050_Init(void);
-void Kalman_Init(Kalman_t *Kalman);
-float Kalman_GetAngle(Kalman_t *Kalman, float newAngle, float newRate, float dt);
-void MPU6050_ReadAccel(int16_t *AccelX, int16_t *AccelY, int16_t *AccelZ);
-void MPU6050_ReadGyro(int16_t *GyroX, int16_t *GyroY, int16_t *GyroZ);
+
 void MPU6050_ReadAll(MPU6050_Data_t *DataStruct);
-void MPU6050_GetData(int16_t *AccX, int16_t *AccY, int16_t *AccZ, int16_t *GyroX, int16_t *GyroY, int16_t *GyroZ);
 void MPU6050_Calibrate(MPU6050_Data_t *DataStruct);
-void MPU6050_ProcessData(MPU6050_Data_t *DataStruct);
+void MPU6050_Update(MPU6050_Data_t *DataStruct);
+void MPU6050_ResetOdometry(MPU6050_Data_t *DataStruct);
 
-float MPU6050_Accel_To_G_16G(int16_t AccelRaw);
-float MPU6050_Gyro_To_DegPerSec_2000(int16_t GyroRaw);
+void MPU6050Task(void *argument);
 
-void MPU6050(void *argument);
+extern MPU6050_Data_t mpu_data;
 
 #endif /* INC_MPU6050_H_ */
