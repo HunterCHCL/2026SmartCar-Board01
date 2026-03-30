@@ -19,6 +19,9 @@
 
 extern uint8_t receivedData[48];
 extern uint8_t receivedCMD;
+extern uint8_t BT24receivedData[48];
+extern uint8_t BT24receivedCMD;
+
 void UARTComms_Transmmit_Data(UART_HandleTypeDef *UARTPort,uint8_t cmd,uint8_t *data,uint8_t len);
 void UARTComms_Init(void);
 

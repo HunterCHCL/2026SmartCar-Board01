@@ -114,7 +114,7 @@ void UARTComms_Task(void *argument)
             if(receivedCMD == 0x01)//转向
             {
                 memcpy(&alpha, &receivedData[0], 4);//角度（单位：度）
-                memcpy(&beta, &receivedData[4], 4);//旋转速度（单位：度/秒）
+                memcpy(&beta, &receivedData[4], 4);//旋转速度（单位：度/s）
                 
             }
             else if(receivedCMD == 0x02)//平移
@@ -129,9 +129,9 @@ void UARTComms_Task(void *argument)
             }
             else if(receivedCMD == 0x04)//设置旋转速度
             {
-                memcpy(&alpha, &receivedData[0], 4);//旋转速度（单位：度/秒）
+                memcpy(&alpha, &receivedData[0], 4);//旋转速度（单位：度/s）
             }
-            Car_UpdateTarget(receivedCMD, alpha, beta);
+            //Car_UpdateTarget(receivedCMD, alpha, beta);
             receivedCMD = 0;
         }
     }

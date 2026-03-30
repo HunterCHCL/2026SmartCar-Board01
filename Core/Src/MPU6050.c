@@ -8,6 +8,7 @@
 #include "i2c.h"
 #include "MPU6050.h"
 #include <math.h>
+#include <stdio.h>
 
 #define MPU6050_I2C hi2c1
 
