@@ -6,307 +6,309 @@
  */
 
 #include "MotorControl.h"
-#include "tim.h"
-#include "cmsis_os.h"
-#include <math.h>
 
 Motor_HandleTypeDef Motor_FL;
 Motor_HandleTypeDef Motor_FR;
-// Motor_HandleTypeDef Motor_RL;
-// Motor_HandleTypeDef Motor_RR;
+Motor_HandleTypeDef Motor_RL;
+Motor_HandleTypeDef Motor_RR;
+
+int32_t Encoder_FL = 0;
+int32_t Encoder_FR = 0;
 
 void MotorControl_Init(void)
 {
-    const fp32 pid_params[3] = {10.0f, 0.5f, 0.0f}; // Adjust these placeholder values later
-    PID_init(&Motor_FL.velocity_pid, PID_POSITION, pid_params, 1000.0f, 500.0f);
-    PID_init(&Motor_FR.velocity_pid, PID_POSITION, pid_params, 1000.0f, 500.0f);
-    // PID_init(&Motor_RL.velocity_pid, PID_POSITION, pid_params, 1000.0f, 500.0f);
-    // PID_init(&Motor_RR.velocity_pid, PID_POSITION, pid_params, 1000.0f, 500.0f);
+    const fp32 position_pid_params[3] = {2.0f, 0.0f, 0.2f};
+    const fp32 speed_pid_params[3] = {2.8f, 0.1f, 0.0f};
+    
+    Motor_FL.target_position = 0.0f;
+    Motor_FL.current_position = 0.0f;
+    Motor_FL.target_velocity = 0.0f;
+    Motor_FL.current_velocity = 0.0f;
+    Motor_FR.target_position = 0.0f;
+    Motor_FR.current_position = 0.0f;
+    Motor_FR.target_velocity = 0.0f;
+    Motor_FR.current_velocity = 0.0f;
+    Motor_FL.mode = MOTOR_CONTROL_VELOCITY;
+    Motor_FR.mode = MOTOR_CONTROL_VELOCITY;
+    Motor_FL.last_time = HAL_GetTick();
+    Motor_FR.last_time = HAL_GetTick();
+
+    PID_init(&Motor_FL.position_pid, PID_POSITION, position_pid_params, Motor_Speed_Limit, Motor_Position_I_Limit);//输出最大值，I最大值
+    PID_init(&Motor_FL.velocity_pid, PID_POSITION, speed_pid_params, Motor_Power_Limit, Motor_Velocity_I_Limit);
+    PID_init(&Motor_FR.position_pid, PID_POSITION, position_pid_params, Motor_Speed_Limit, Motor_Position_I_Limit);
+    PID_init(&Motor_FR.velocity_pid, PID_POSITION, speed_pid_params, Motor_Power_Limit, Motor_Velocity_I_Limit);
 
     HAL_TIM_PWM_Start(&Motor_FL_PWM_TIMEBASE, Motor_FL_PWM);
     HAL_TIM_PWM_Start(&Motor_FR_PWM_TIMEBASE, Motor_FR_PWM);
+
     HAL_TIM_Encoder_Start(&Motor_FL_Encoder_Timebase, TIM_CHANNEL_ALL);
     HAL_TIM_Encoder_Start(&Motor_FR_Encoder_Timebase, TIM_CHANNEL_ALL);
-    // HAL_TIM_PWM_Start(&Motor_RL_PWM_TIMEBASE, Motor_RL_PWM);
-    // HAL_TIM_PWM_Start(&Motor_RR_PWM_TIMEBASE, Motor_RR_PWM);
 }
-void Motor_FL_SetState(Motor_State state)
+
+void Motor_SetState(Motor_ID motor_id, Motor_State state)
 {
-    switch(state)
+    switch(motor_id)
     {
-        case Motor_Forward:
-            HAL_GPIO_WritePin(Motor_FL_IN1_GPIO_Port, Motor_FL_IN1_Pin, GPIO_PIN_SET);
-            HAL_GPIO_WritePin(Motor_FL_IN2_GPIO_Port, Motor_FL_IN2_Pin, GPIO_PIN_RESET);
+        case Motor_FL_ID:
+            switch(state)
+            {
+                case Motor_Forward:
+                    HAL_GPIO_WritePin(Motor_FL_IN1_GPIO_Port, Motor_FL_IN1_Pin, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(Motor_FL_IN2_GPIO_Port, Motor_FL_IN2_Pin, GPIO_PIN_RESET);
+                    break;
+                case Motor_Backward:
+                    HAL_GPIO_WritePin(Motor_FL_IN1_GPIO_Port, Motor_FL_IN1_Pin, GPIO_PIN_RESET);
+                    HAL_GPIO_WritePin(Motor_FL_IN2_GPIO_Port, Motor_FL_IN2_Pin, GPIO_PIN_SET);
+                    break;
+                case Motor_Brake:
+                    HAL_GPIO_WritePin(Motor_FL_IN1_GPIO_Port, Motor_FL_IN1_Pin, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(Motor_FL_IN2_GPIO_Port, Motor_FL_IN2_Pin, GPIO_PIN_SET);
+                    break;
+                case Motor_Coast:
+                    HAL_GPIO_WritePin(Motor_FL_IN1_GPIO_Port, Motor_FL_IN1_Pin, GPIO_PIN_RESET);
+                    HAL_GPIO_WritePin(Motor_FL_IN2_GPIO_Port, Motor_FL_IN2_Pin, GPIO_PIN_RESET);
+                    break;
+            }
             break;
-        case Motor_Backward:
-            HAL_GPIO_WritePin(Motor_FL_IN1_GPIO_Port, Motor_FL_IN1_Pin, GPIO_PIN_RESET);
-            HAL_GPIO_WritePin(Motor_FL_IN2_GPIO_Port, Motor_FL_IN2_Pin, GPIO_PIN_SET);
+        case Motor_FR_ID:
+            switch(state)
+            {
+                case Motor_Forward:
+                    HAL_GPIO_WritePin(Motor_FR_IN1_GPIO_Port, Motor_FR_IN1_Pin, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(Motor_FR_IN2_GPIO_Port, Motor_FR_IN2_Pin, GPIO_PIN_RESET);
+                    break;
+                case Motor_Backward:
+                    HAL_GPIO_WritePin(Motor_FR_IN1_GPIO_Port, Motor_FR_IN1_Pin, GPIO_PIN_RESET);
+                    HAL_GPIO_WritePin(Motor_FR_IN2_GPIO_Port, Motor_FR_IN2_Pin, GPIO_PIN_SET);
+                    break;
+                case Motor_Brake:
+                    HAL_GPIO_WritePin(Motor_FR_IN1_GPIO_Port, Motor_FR_IN1_Pin, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(Motor_FR_IN2_GPIO_Port, Motor_FR_IN2_Pin, GPIO_PIN_SET);
+                    break;
+                case Motor_Coast:
+                    HAL_GPIO_WritePin(Motor_FR_IN1_GPIO_Port, Motor_FR_IN1_Pin, GPIO_PIN_RESET);
+                    HAL_GPIO_WritePin(Motor_FR_IN2_GPIO_Port, Motor_FR_IN2_Pin, GPIO_PIN_RESET);
+                    break;
+            }
             break;
-        case Motor_Brake:
-            HAL_GPIO_WritePin(Motor_FL_IN1_GPIO_Port, Motor_FL_IN1_Pin, GPIO_PIN_SET);
-            HAL_GPIO_WritePin(Motor_FL_IN2_GPIO_Port, Motor_FL_IN2_Pin, GPIO_PIN_SET);
+        /*
+        case Motor_RL_ID:
+            switch(state)
+            {
+                case Motor_Forward:
+                    HAL_GPIO_WritePin(Motor_RL_IN1_GPIO_Port, Motor_RL_IN1_Pin, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(Motor_RL_IN2_GPIO_Port, Motor_RL_IN2_Pin, GPIO_PIN_RESET);
+                    break;
+                case Motor_Backward:
+                    HAL_GPIO_WritePin(Motor_RL_IN1_GPIO_Port, Motor_RL_IN1_Pin, GPIO_PIN_RESET);
+                    HAL_GPIO_WritePin(Motor_RL_IN2_GPIO_Port, Motor_RL_IN2_Pin, GPIO_PIN_SET);
+                    break;
+                case Motor_Brake:
+                    HAL_GPIO_WritePin(Motor_RL_IN1_GPIO_Port, Motor_RL_IN1_Pin, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(Motor_RL_IN2_GPIO_Port, Motor_RL_IN2_Pin, GPIO_PIN_SET);
+                    break;
+                case Motor_Coast:
+                    HAL_GPIO_WritePin(Motor_RL_IN1_GPIO_Port, Motor_RL_IN1_Pin, GPIO_PIN_RESET);
+                    HAL_GPIO_WritePin(Motor_RL_IN2_GPIO_Port, Motor_RL_IN2_Pin, GPIO_PIN_RESET);
+                    break;
+            }
             break;
-        case Motor_Coast:
-            HAL_GPIO_WritePin(Motor_FL_IN1_GPIO_Port, Motor_FL_IN1_Pin, GPIO_PIN_RESET);
-            HAL_GPIO_WritePin(Motor_FL_IN2_GPIO_Port, Motor_FL_IN2_Pin, GPIO_PIN_RESET);
+        case Motor_RR_ID:
+            switch(state)
+            {
+                case Motor_Forward:
+                    HAL_GPIO_WritePin(Motor_RR_IN1_GPIO_Port, Motor_RR_IN1_Pin, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(Motor_RR_IN2_GPIO_Port, Motor_RR_IN2_Pin, GPIO_PIN_RESET);
+                    break;
+                case Motor_Backward:
+                    HAL_GPIO_WritePin(Motor_RR_IN1_GPIO_Port, Motor_RR_IN1_Pin, GPIO_PIN_RESET);
+                    HAL_GPIO_WritePin(Motor_RR_IN2_GPIO_Port, Motor_RR_IN2_Pin, GPIO_PIN_SET);
+                    break;
+                case Motor_Brake:
+                    HAL_GPIO_WritePin(Motor_RR_IN1_GPIO_Port, Motor_RR_IN1_Pin, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(Motor_RR_IN2_GPIO_Port, Motor_RR_IN2_Pin, GPIO_PIN_SET);
+                    break;
+                case Motor_Coast:
+                    HAL_GPIO_WritePin(Motor_RR_IN1_GPIO_Port, Motor_RR_IN1_Pin, GPIO_PIN_RESET);
+                    HAL_GPIO_WritePin(Motor_RR_IN2_GPIO_Port, Motor_RR_IN2_Pin, GPIO_PIN_RESET);
+                    break;
+            }
             break;
+        */
     }
 }
-void Motor_FR_SetState(Motor_State state)
-{
-    switch(state)
-    {
-        case Motor_Forward:
-            HAL_GPIO_WritePin(Motor_FR_IN1_GPIO_Port, Motor_FR_IN1_Pin, GPIO_PIN_SET);
-            HAL_GPIO_WritePin(Motor_FR_IN2_GPIO_Port, Motor_FR_IN2_Pin, GPIO_PIN_RESET);
-            break;
-        case Motor_Backward:
-            HAL_GPIO_WritePin(Motor_FR_IN1_GPIO_Port, Motor_FR_IN1_Pin, GPIO_PIN_RESET);
-            HAL_GPIO_WritePin(Motor_FR_IN2_GPIO_Port, Motor_FR_IN2_Pin, GPIO_PIN_SET);
-            break;
-        case Motor_Brake:
-            HAL_GPIO_WritePin(Motor_FR_IN1_GPIO_Port, Motor_FR_IN1_Pin, GPIO_PIN_SET);
-            HAL_GPIO_WritePin(Motor_FR_IN2_GPIO_Port, Motor_FR_IN2_Pin, GPIO_PIN_SET);
-            break;
-        case Motor_Coast:
-            HAL_GPIO_WritePin(Motor_FR_IN1_GPIO_Port, Motor_FR_IN1_Pin, GPIO_PIN_RESET);
-            HAL_GPIO_WritePin(Motor_FR_IN2_GPIO_Port, Motor_FR_IN2_Pin, GPIO_PIN_RESET);
-            break;
-    }
-}
-// void Motor_RL_SetState(Motor_State state)
-// {
-//     switch(state)
-//     {
-//         case Motor_Forward:
-//             HAL_GPIO_WritePin(Motor_RL_IN1_GPIO_Port, Motor_RL_IN1_Pin, GPIO_PIN_SET);
-//             HAL_GPIO_WritePin(Motor_RL_IN2_GPIO_Port, Motor_RL_IN2_Pin, GPIO_PIN_RESET);
-//             break;
-//         case Motor_Backward:
-//             HAL_GPIO_WritePin(Motor_RL_IN1_GPIO_Port, Motor_RL_IN1_Pin, GPIO_PIN_RESET);
-//             HAL_GPIO_WritePin(Motor_RL_IN2_GPIO_Port, Motor_RL_IN2_Pin, GPIO_PIN_SET);
-//             break;
-//         case Motor_Brake:
-//             HAL_GPIO_WritePin(Motor_RL_IN1_GPIO_Port, Motor_RL_IN1_Pin, GPIO_PIN_SET);
-//             HAL_GPIO_WritePin(Motor_RL_IN2_GPIO_Port, Motor_RL_IN2_Pin, GPIO_PIN_SET);
-//             break;
-//         case Motor_Coast:
-//             HAL_GPIO_WritePin(Motor_RL_IN1_GPIO_Port, Motor_RL_IN1_Pin, GPIO_PIN_RESET);
-//             HAL_GPIO_WritePin(Motor_RL_IN2_GPIO_Port, Motor_RL_IN2_Pin, GPIO_PIN_RESET);
-//             break;
-//     }
-// }
-// void Motor_RR_SetState(Motor_State state)
-// {
-//     switch(state)
-//     {
-//         case Motor_Forward:
-//             HAL_GPIO_WritePin(Motor_RR_IN1_GPIO_Port, Motor_RR_IN1_Pin, GPIO_PIN_SET);
-//             HAL_GPIO_WritePin(Motor_RR_IN2_GPIO_Port, Motor_RR_IN2_Pin, GPIO_PIN_RESET);
-//             break;
-//         case Motor_Backward:
-//             HAL_GPIO_WritePin(Motor_RR_IN1_GPIO_Port, Motor_RR_IN1_Pin, GPIO_PIN_RESET);
-//             HAL_GPIO_WritePin(Motor_RR_IN2_GPIO_Port, Motor_RR_IN2_Pin, GPIO_PIN_SET);
-//             break;
-//         case Motor_Brake:
-//             HAL_GPIO_WritePin(Motor_RR_IN1_GPIO_Port, Motor_RR_IN1_Pin, GPIO_PIN_SET);
-//             HAL_GPIO_WritePin(Motor_RR_IN2_GPIO_Port, Motor_RR_IN2_Pin, GPIO_PIN_SET);
-//             break;
-//         case Motor_Coast:
-//             HAL_GPIO_WritePin(Motor_RR_IN1_GPIO_Port, Motor_RR_IN1_Pin, GPIO_PIN_RESET);
-//             HAL_GPIO_WritePin(Motor_RR_IN2_GPIO_Port, Motor_RR_IN2_Pin, GPIO_PIN_RESET);
-//             break;
-//     }
-// }
-void Motor_FL_SetPWM(uint16_t duty)
+
+void Motor_SetPWM(Motor_ID motor_id, uint16_t duty)
 {
     uint16_t max_duty = (uint16_t)__HAL_TIM_GET_AUTORELOAD(&Motor_FL_PWM_TIMEBASE);
     if (duty > max_duty) {
         duty = max_duty;
     }
-    __HAL_TIM_SET_COMPARE(&Motor_FL_PWM_TIMEBASE, Motor_FL_PWM, duty);
-}
-void Motor_FR_SetPWM(uint16_t duty)
-{
-    uint16_t max_duty = (uint16_t)__HAL_TIM_GET_AUTORELOAD(&Motor_FR_PWM_TIMEBASE);
-    if (duty > max_duty) {
-        duty = max_duty;
-    }
-    __HAL_TIM_SET_COMPARE(&Motor_FR_PWM_TIMEBASE, Motor_FR_PWM, duty);
-}
-// void Motor_RL_SetPWM(uint16_t duty)
-// {
-//     uint16_t max_duty = (uint16_t)__HAL_TIM_GET_AUTORELOAD(&Motor_RL_PWM_TIMEBASE);
-//     if (duty > max_duty) {
-//         duty = max_duty;
-//     }
-//     __HAL_TIM_SET_COMPARE(&Motor_RL_PWM_TIMEBASE, Motor_RL_PWM, duty);
-// }
-// void Motor_RR_SetPWM(uint16_t duty)
-// {
-//     uint16_t max_duty = (uint16_t)__HAL_TIM_GET_AUTORELOAD(&Motor_RR_PWM_TIMEBASE);
-//     if (duty > max_duty) {
-//         duty = max_duty;
-//     }
-//     __HAL_TIM_SET_COMPARE(&Motor_RR_PWM_TIMEBASE, Motor_RR_PWM, duty);
-// }
-void Motor_FL_Drive(float output_pwm)
-{
-    if (output_pwm > 0)
+    switch(motor_id)
     {
-        Motor_FL_SetState(Motor_Forward);
-        Motor_FL_SetPWM((uint16_t)output_pwm);
+        case Motor_FL_ID:
+            __HAL_TIM_SET_COMPARE(&Motor_FL_PWM_TIMEBASE, Motor_FL_PWM, duty);
+            break;
+        case Motor_FR_ID:
+            __HAL_TIM_SET_COMPARE(&Motor_FR_PWM_TIMEBASE, Motor_FR_PWM, duty);
+            break;
+        /*
+        case Motor_RL_ID:
+            __HAL_TIM_SET_COMPARE(&Motor_RL_PWM_TIMEBASE, Motor_RL_PWM, duty);
+            break;
+        case Motor_RR_ID:
+            __HAL_TIM_SET_COMPARE(&Motor_RR_PWM_TIMEBASE, Motor_RR_PWM, duty);
+            break;
+        */
+    }
+}
+
+void Motor_Drive(Motor_ID motor_id, float output_pwm)
+{
+     if (output_pwm > 0)
+    {
+        Motor_SetState(motor_id, Motor_Forward);
+        Motor_SetPWM(motor_id, (uint16_t)output_pwm);
     }
     else if (output_pwm < 0)
     {
-        Motor_FL_SetState(Motor_Backward);
-        Motor_FL_SetPWM((uint16_t)(-output_pwm));
+        Motor_SetState(motor_id, Motor_Backward);
+        Motor_SetPWM(motor_id, (uint16_t)(-output_pwm));
     }
     else
     {
-        Motor_FL_SetState(Motor_Brake);
-        Motor_FL_SetPWM(0);
+        Motor_SetState(motor_id, Motor_Brake);
+        Motor_SetPWM(motor_id, 0);
     }
 }
 
-void Motor_FR_Drive(float output_pwm)
+void Motor_SetTargetPosition(Motor_ID motor_id, float target_position)
 {
-    if (output_pwm > 0)
+    switch(motor_id)
     {
-        Motor_FR_SetState(Motor_Forward);
-        Motor_FR_SetPWM((uint16_t)output_pwm);
+        case Motor_FL_ID: Motor_FL.mode = MOTOR_CONTROL_POSITION;Motor_FL.target_position = target_position; break;
+        case Motor_FR_ID: Motor_FR.mode = MOTOR_CONTROL_POSITION;Motor_FR.target_position = target_position; break;
+        /*
+        case Motor_RL_ID: Motor_RL.mode = MOTOR_CONTROL_POSITION;Motor_RL.target_position = target_position; break;
+        case Motor_RR_ID: Motor_RR.mode = MOTOR_CONTROL_POSITION;Motor_RR.target_position = target_position; break;
+        */
     }
-    else if (output_pwm < 0)
+}
+
+void Motor_SetTargetVelocity(Motor_ID motor_id, float target_velocity)
+{
+    switch(motor_id)
     {
-        Motor_FR_SetState(Motor_Backward);
-        Motor_FR_SetPWM((uint16_t)(-output_pwm));
+        case Motor_FL_ID: Motor_FL.mode = MOTOR_CONTROL_VELOCITY;Motor_FL.target_velocity = target_velocity; break;
+        case Motor_FR_ID: Motor_FR.mode = MOTOR_CONTROL_VELOCITY;Motor_FR.target_velocity = target_velocity; break;
+        /*
+        case Motor_RL_ID: Motor_RL.mode = MOTOR_CONTROL_VELOCITY;Motor_RL.target_velocity = target_velocity; break;
+        case Motor_RR_ID: Motor_RR.mode = MOTOR_CONTROL_VELOCITY;Motor_RR.target_velocity = target_velocity; break;
+        */
     }
-    else
-    {
-        Motor_FR_SetState(Motor_Brake);
-        Motor_FR_SetPWM(0);
-    }
 }
-// void Motor_RL_Drive(float output_pwm)
-// {
-//     if (output_pwm > 0)
-//     {
-//         Motor_RL_SetState(Motor_Forward);
-//         Motor_RL_SetPWM((uint16_t)output_pwm);
-//     }
-//     else if (output_pwm < 0)
-//     {
-//         Motor_RL_SetState(Motor_Backward);
-//         Motor_RL_SetPWM((uint16_t)(-output_pwm));
-//     }
-//     else
-//     {
-//         Motor_RL_SetState(Motor_Brake);
-//         Motor_RL_SetPWM(0);
-//     }
-// }
-// void Motor_RR_Drive(float output_pwm)
-// {
-//     if (output_pwm > 0)
-//     {
-//         Motor_RR_SetState(Motor_Forward);
-//         Motor_RR_SetPWM((uint16_t)output_pwm);
-//     }
-//     else if (output_pwm < 0)
-//     {
-//         Motor_RR_SetState(Motor_Backward);
-//         Motor_RR_SetPWM((uint16_t)(-output_pwm));
-//     }
-//     else
-//     {
-//         Motor_RR_SetState(Motor_Brake);
-//         Motor_RR_SetPWM(0);
-//     }
-// }
-
-void Motor_FL_SetVelocity(float target_velocity)
-{
-    Motor_FL.target_velocity = target_velocity;
-}
-
-void Motor_FR_SetVelocity(float target_velocity)
-{
-    Motor_FR.target_velocity = target_velocity;
-}
-
-// void Motor_RL_SetVelocity(float target_velocity)
-// {
-//     Motor_RL.target_velocity = target_velocity;
-// }
-// 
-// void Motor_RR_SetVelocity(float target_velocity)
-// {
-//     Motor_RR.target_velocity = target_velocity;
-// }
-
-void Motor_FL_Update(float current_velocity)
-{
-    Motor_FL.current_velocity = current_velocity;
-    fp32 pwm = PID_calc(&Motor_FL.velocity_pid, current_velocity, Motor_FL.target_velocity);
-    Motor_FL_Drive(pwm);
-}
-
-void Motor_FR_Update(float current_velocity)
-{
-    Motor_FR.current_velocity = current_velocity;
-    fp32 pwm = PID_calc(&Motor_FR.velocity_pid, current_velocity, Motor_FR.target_velocity);
-    Motor_FR_Drive(pwm);
-}
-
-// void Motor_RL_Update(float current_velocity)
-// {
-//     Motor_RL.current_velocity = current_velocity;
-//     fp32 pwm = PID_calc(&Motor_RL.velocity_pid, current_velocity, Motor_RL.target_velocity);
-//     Motor_RL_Drive(pwm);
-// }
-// 
-// void Motor_RR_Update(float current_velocity)
-// {
-//     Motor_RR.current_velocity = current_velocity;
-//     fp32 pwm = PID_calc(&Motor_RR.velocity_pid, current_velocity, Motor_RR.target_velocity);
-//     Motor_RR_Drive(pwm);
-// }
-
-float Motor_FL_ReadEncoder(void)
+int16_t Motor_FL_ReadEncoder(void)
 {
     int16_t count = (int16_t)__HAL_TIM_GET_COUNTER(&Motor_FL_Encoder_Timebase);
     __HAL_TIM_SET_COUNTER(&Motor_FL_Encoder_Timebase, 0);
-    
-    // Calculate RPM
-    // Total counts per wheel revolution = Motor_Encoder_Resolution * 4 * Motor_Transmission_Ratio
-    // dt = 10ms (100Hz), so RPM = (count / total_counts) * 100 * 60
-    // Note: Assuming TIM2 and TIM3 are configured to Encoder Mode TI1 and TI2 (4x resolution)
-    float rpm = (float)count * 6000.0f / (Motor_Encoder_Resolution * 4.0f * Motor_Transmission_Ratio);
-    return rpm;
+    return count;
 }
 
-float Motor_FR_ReadEncoder(void)
+int16_t Motor_FR_ReadEncoder(void)
 {
     int16_t count = (int16_t)__HAL_TIM_GET_COUNTER(&Motor_FR_Encoder_Timebase);
     __HAL_TIM_SET_COUNTER(&Motor_FR_Encoder_Timebase, 0);
-    
-    // Reverse count if motor orientation is mirrored physically
-    float rpm = (float)count * 6000.0f / (Motor_Encoder_Resolution * 4.0f * Motor_Transmission_Ratio);
-    return rpm;
+    return count;
+}
+/*
+int16_t Motor_RL_ReadEncoder(void)
+{
+    int16_t count = (int16_t)__HAL_TIM_GET_COUNTER(&Motor_RL_Encoder_Timebase);
+    __HAL_TIM_SET_COUNTER(&Motor_RL_Encoder_Timebase, 0);
+    return count;
 }
 
-void MotorTask(void *argument)
+int16_t Motor_RR_ReadEncoder(void)
 {
-    MotorControl_Init();
-    
-    while(1)
+    int16_t count = (int16_t)__HAL_TIM_GET_COUNTER(&Motor_RR_Encoder_Timebase);
+    __HAL_TIM_SET_COUNTER(&Motor_RR_Encoder_Timebase, 0);
+    return count;
+}
+*/
+uint8_t Motor_DirFactor(Motor_ID motor_id)
+{
+    switch(motor_id)
     {
-        float current_velocity_FL = Motor_FL_ReadEncoder();
-        float current_velocity_FR = Motor_FR_ReadEncoder();
-        
-        Motor_FL_Update(current_velocity_FL);
-        Motor_FR_Update(current_velocity_FR);
-        
-        osDelay(10);
+        case Motor_FL_ID: return Motor_FL_Encoder_DIR_FACTOR;
+        case Motor_FR_ID: return Motor_FR_Encoder_DIR_FACTOR;
+        // case Motor_RL_ID: return Motor_RL_Encoder_DIR_FACTOR;
+        // case Motor_RR_ID: return Motor_RR_Encoder_DIR_FACTOR;
     }
+    return 1;
+}
+
+static void Motor_UpdateMotor(Motor_HandleTypeDef* motor, Motor_ID id, int16_t encoder_delta)
+{
+    uint32_t current_time = HAL_GetTick();
+    if (motor->last_time == 0) 
+    {
+        motor->last_time = current_time;
+        return;
+    }
+    float dt = (current_time - motor->last_time) / 1000.0f; // s
+    if (dt <= 0.0f) dt = 0.001f;
+    motor->current_velocity = encoder_delta * Motor_Pulse_To_Distance / dt; // cm/s
+    motor->current_position += encoder_delta * Motor_Pulse_To_Distance; // cm
+    if(motor->mode == MOTOR_CONTROL_POSITION)
+    {
+        motor->target_velocity = PID_calc(&motor->position_pid, motor->current_position, motor->target_position);
+    }
+    float pwm = Motor_DirFactor(id) * PID_calc(&motor->velocity_pid, motor->current_velocity, motor->target_velocity);
+    Motor_Drive(id, pwm);
+    motor->last_time = current_time;
+}
+
+
+void Motor_FL_Update(void)
+{
+    int16_t delta = Motor_DirFactor(Motor_FL_ID)*Motor_FL_ReadEncoder();
+    Encoder_FL += delta;
+    Motor_UpdateMotor(&Motor_FL, Motor_FL_ID, delta);
+}
+
+void Motor_FR_Update(void)
+{
+    int16_t delta = Motor_DirFactor(Motor_FR_ID)*Motor_FR_ReadEncoder();
+    Encoder_FR += delta;
+    Motor_UpdateMotor(&Motor_FR, Motor_FR_ID, delta);
+}
+
+/*
+void Motor_RL_Update(void)
+{
+    int16_t delta = Motor_RL_ReadEncoder();
+    Global_EncoderPulse_RL += delta;
+    Motor_UpdateSingle(&Motor_RL, Motor_RL_ID, delta);
+}
+
+void Motor_RR_Update(void)
+{
+    int16_t delta = Motor_RR_ReadEncoder();
+    Global_EncoderPulse_RR += delta;
+    Motor_UpdateSingle(&Motor_RR, Motor_RR_ID, delta);
+}
+*/
+
+void MotorTask(void const * argument)
+{
+  while(1)
+  {
+    Motor_FL_Update();
+    Motor_FR_Update();
+    /*
+    Motor_RL_Update();
+    Motor_RR_Update();
+    */
+    osDelay(CycleTime*1000);
+  }
 }

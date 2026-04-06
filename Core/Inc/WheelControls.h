@@ -7,9 +7,22 @@
 
 #include "main.h"
 #include "MotorControl.h"
-#include "MPU6050.h"
-#include "pid.h"
 #include "cmsis_os.h"
+#include <math.h>
+#include "UARTComms.h"
+#include "MPU6050.h"
+
+#define WHEEL_DIAMETER_CM 6.0f     // 轮子直径(cm)
+
+#define CAR_REMOTE_CONTROL_FORWARD_SPEED 20.0f // cm/s
+#define CAR_REMOTE_CONTROL_ROTATION_SPEED 25.0f // deg/s
+
+#define WHELL_FL_DIR 1 //电机方向系数(以y方向为基准)
+#define WHELL_FR_DIR 1 
+#define WHELL_RL_DIR -1 
+#define WHELL_RR_DIR -1 
+
+#define Delay_Time 20//ms
 
 typedef enum{
     CAR_CONTROL_TURN,
@@ -18,24 +31,34 @@ typedef enum{
 } CarControlMode;
 
 typedef struct {
-    float x;
-    float y;
-    float vx;//cm/s
-    float vy;
-    float yawAngle;//度
-    float rotationSpeed;//度/秒
+    Coordinates velocity;//cm/s
+    float yawAngle;//rad
+    float rotationSpeed;//rad/s
 
-    float target_x;
-    float target_y;
-    float target_vx;
-    float target_vy;
+    Coordinates target_position;//cm
+    Coordinates target_velocity;//速度矢量 cm/s
     float target_yawAngle;
     float target_rotationSpeed;
 
     CarControlMode mode;
 } CarControl;
 
+typedef struct{
+    uint8_t Forward;
+    uint8_t Left;
+    uint8_t Backward;
+    uint8_t Right;
+    uint8_t RotateLeft;
+    uint8_t RotateRight;
+} RemoteControlInput;
+
+typedef struct{
+    float x;
+    float y;
+}Coordinates;
+
 extern CarControl Car_Control;
+extern RemoteControlInput Remote_Control_Input;
 
 void Car_UpdateState(void);
 void Car_UpdateTarget(uint8_t cmd, float param1, float param2);

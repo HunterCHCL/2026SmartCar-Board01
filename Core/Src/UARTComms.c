@@ -4,12 +4,9 @@
  *  Created on: Mar 19, 2026
  *      Author: HunterCHCL
  */
-#include "verification.h"
-#include "main.h"
-#include "usart.h"
+
 #include "UARTComms.h"
-#include "string.h"
-#include "cmsis_os.h"
+
 
 extern osThreadId_t CommsHandle;
 
@@ -121,6 +118,9 @@ void UARTComms_Task(void *argument)
             {
                 memcpy(&alpha, &receivedData[0], 4);//x距离（单位：cm）
                 memcpy(&beta, &receivedData[4], 4);//y距离（单位：cm）
+                Encoder_FL = 0;
+                Encoder_FR = 0;
+                UARTComms_Transmmit_Data(&UARTComms_Port, 0x2A, 0x00, 1);//重置编码器
             }
             else if(receivedCMD == 0x03)//设置巡航速度
             {
@@ -130,6 +130,16 @@ void UARTComms_Task(void *argument)
             else if(receivedCMD == 0x04)//设置旋转速度
             {
                 memcpy(&alpha, &receivedData[0], 4);//旋转速度（单位：度/s）
+            }
+            else if(receivedCMD == 0xB1)//遥控模式
+            {
+                memcpy(&Remote_Control_Input->Forward, &receivedData[0], 1);
+                memcpy(&Remote_Control_Input->Backward, &receivedData[1], 1);
+                memcpy(&Remote_Control_Input->Left, &receivedData[2], 1);
+                memcpy(&Remote_Control_Input->Right, &receivedData[3], 1);
+                memcpy(&Remote_Control_Input->RotateLeft, &receivedData[4], 1);
+                memcpy(&Remote_Control_Input->RotateRight, &receivedData[5], 1);
+                Car_Control.mode = CAR_CONTROL_COAST;
             }
             //Car_UpdateTarget(receivedCMD, alpha, beta);
             receivedCMD = 0;

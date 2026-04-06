@@ -10,6 +10,10 @@
 
 #include "main.h"
 #include "usart.h"
+#include "string.h"
+#include "cmsis_os.h"
+#include "verification.h"
+#include "WheelControls.h"
 
 #define PackageHead1 0xFA
 #define PackageHead2 0xAF
