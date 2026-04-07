@@ -5,15 +5,12 @@
 #include "WheelControls.h"
 
 CarControl Car_Control={0};
+//static int32_t last_pulse_fl = 0;
+//static int32_t last_pulse_fr = 0;
+//static int32_t last_pulse_rl = 0;
+//static int32_t last_pulse_rr = 0;
 
-int32_t Global_EncoderPulse_RL = 0;
-int32_t Global_EncoderPulse_RR = 0;
-static int32_t last_pulse_fl = 0;
-static int32_t last_pulse_fr = 0;
-static int32_t last_pulse_rl = 0;
-static int32_t last_pulse_rr = 0;
-
-pid_type_def pid_turn;
+//pid_type_def pid_turn;
 
 static Coordinates TransformCoordinates(Coordinates input, float Angle,uint8_t clockwise)//顺时针1，逆时针0
 {
@@ -31,17 +28,11 @@ static Coordinates TransformCoordinates(Coordinates input, float Angle,uint8_t c
     return coord;
 }
 
-static void Car_UpdateStatus(void)
-{
-   Car_Control.yawAngle = MPU6050_yaw;
-
-}
-
-void Car_PID_Init(void)
-{
-    const float turn_pid_params[3] = {5.0f, 0.0f, 0.5f};
-    PID_init(&pid_turn, PID_POSITION, turn_pid_params, 100.0f, 50.0f);
-}
+//void Car_PID_Init(void)
+//{
+//    const float turn_pid_params[3] = {5.0f, 0.0f, 0.5f};
+//    PID_init(&pid_turn, PID_POSITION, turn_pid_params, 100.0f, 50.0f);
+//}
 
 void Car_UpdateTarget(uint8_t cmd, float param1, float param2)
 {
@@ -59,8 +50,8 @@ void Car_UpdateTarget(uint8_t cmd, float param1, float param2)
     }
     else if(cmd==0x03)//设置巡航速度
     {
-        Car_Control.target_vx = param1;
-        Car_Control.target_vy = param2;
+        Car_Control.target_velocity.x = param1;
+        Car_Control.target_velocity.y = param2;
         Car_Control.mode = CAR_CONTROL_COAST;
     }
     else if(cmd==0x04)//设置旋转速度
@@ -75,28 +66,28 @@ void Car_RemoteControl(RemoteControlInput *input)
 {
     if(input->Forward)
     {
-        Car_Control.target_vx = CAR_REMOTE_CONTROL_FORWARD_SPEED;
+        Car_Control.target_velocity.x = CAR_REMOTE_CONTROL_FORWARD_SPEED;
     }
     else if(input->Backward)
     {
-        Car_Control.target_vx = -CAR_REMOTE_CONTROL_FORWARD_SPEED;
+        Car_Control.target_velocity.x = -CAR_REMOTE_CONTROL_FORWARD_SPEED;
     }
     else
     {
-        Car_Control.target_vx = 0.0f;
+        Car_Control.target_velocity.x = 0.0f;
     }
 
     if(input->Left)
     {
-        Car_Control.target_vy = CAR_REMOTE_CONTROL_ROTATION_SPEED;
+        Car_Control.target_velocity.y = -CAR_REMOTE_CONTROL_SIDEWAYS_SPEED;
     }
     else if(input->Right)
     {
-        Car_Control.target_vy = -CAR_REMOTE_CONTROL_ROTATION_SPEED;
+        Car_Control.target_velocity.y = CAR_REMOTE_CONTROL_SIDEWAYS_SPEED;
     }
     else
     {
-        Car_Control.target_vy = 0.0f;
+        Car_Control.target_velocity.y = 0.0f;
     }
 
     if(input->RotateLeft)
@@ -154,7 +145,7 @@ void Car_RemoteControl(RemoteControlInput *input)
 // }
 static void Car_Turn(void)
 {
-    if(CarControl.target_yawAngle<DEADZONE_ANGLE&&CarControl.target_yawAngle>-DEADZONE_ANGLE)
+    if(Car_Control.target_yawAngle<DEADZONE_ANGLE&&Car_Control.target_yawAngle>-DEADZONE_ANGLE)
     {
         return;
     }
@@ -185,17 +176,21 @@ static void Car_Move(Coordinates target_position)
 
 static void Car_Coast(void)
 {
-    Coordinates transformed_velocity = TransformCoordinates((Coordinates){Car_Control.target_vx, Car_Control.target_vy},0.78539816f, 0);//转换到轮子坐标系
-    MotorFL.target_velocity = WHELL_FL_DIR* (transformed_velocity.y - Car_Control.target_rotationSpeed);
-    MotorFR.target_velocity = WHELL_FR_DIR* (transformed_velocity.x + Car_Control.target_rotationSpeed);
-    MotorRL.target_velocity = WHELL_RL_DIR* (transformed_velocity.x - Car_Control.target_rotationSpeed);
-    MotorRR.target_velocity = WHELL_RR_DIR* (transformed_velocity.y + Car_Control.target_rotationSpeed);
+    Coordinates transformed_velocity = TransformCoordinates((Coordinates){Car_Control.target_velocity.x, Car_Control.target_velocity.y},0.78539816f, 0);//转换到轮子坐标系
+    // Motor_FL.target_velocity = WHELL_FL_DIR* (transformed_velocity.y - Car_Control.target_rotationSpeed);
+    // Motor_FR.target_velocity = WHELL_FR_DIR* (transformed_velocity.x + Car_Control.target_rotationSpeed);
+    // Motor_RL.target_velocity = WHELL_RL_DIR* (transformed_velocity.x - Car_Control.target_rotationSpeed);
+    // Motor_RR.target_velocity = WHELL_RR_DIR* (transformed_velocity.y + Car_Control.target_rotationSpeed);
+    Motor_SetTargetVelocity(Motor_FL_ID, transformed_velocity.y - Car_Control.target_rotationSpeed);
+    Motor_SetTargetVelocity(Motor_FR_ID, transformed_velocity.x + Car_Control.target_rotationSpeed);
+    Motor_SetTargetVelocity(Motor_RL_ID, transformed_velocity.x - Car_Control.target_rotationSpeed);
+    Motor_SetTargetVelocity(Motor_RR_ID, transformed_velocity.y + Car_Control.target_rotationSpeed);
 }
 
 void CarControlTask(void *argument)
 {
-    Car_PID_Init();
-
+//    Car_PID_Init();
+    Car_Control.mode = CAR_CONTROL_TEST;
     while(1)
     {
         switch(Car_Control.mode)
@@ -209,6 +204,8 @@ void CarControlTask(void *argument)
             case CAR_CONTROL_COAST:
                 Car_Coast();
                 break;
+            case CAR_CONTROL_TEST:
+                break;
         }
         uint8_t buffer[8];
         if(Motor_RL.mode == MOTOR_CONTROL_POSITION)
@@ -216,13 +213,15 @@ void CarControlTask(void *argument)
             memcpy(&buffer[0],&Motor_RL.target_position,4);
             memcpy(&buffer[4],&Motor_RR.target_position,4);
             UARTComms_Transmmit_Data(&UARTComms_Port, 0x1A, buffer, 8);
+//            UARTComms_Transmmit_Data(&UARTComms_BT24_Port, 0x01, buffer, 8);
         }
         else if(Motor_RL.mode == MOTOR_CONTROL_VELOCITY)
         {
             memcpy(&buffer[0],&Motor_RL.target_velocity,4);
             memcpy(&buffer[4],&Motor_RR.target_velocity,4);
             UARTComms_Transmmit_Data(&UARTComms_Port, 0x1B, buffer, 8);
+//            UARTComms_Transmmit_Data(&UARTComms_BT24_Port, 0x01, buffer, 8);
         }
-        osDelay(Delay_Time);
+        osDelay(DELAY_TIME);
     }
 }

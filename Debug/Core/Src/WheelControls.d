@@ -27,7 +27,7 @@ Core/Src/WheelControls.o: ../Core/Src/WheelControls.c \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h \
  ../Core/Inc/MotorControl.h ../Core/Inc/pid.h ../Core/Inc/struct.h \
- ../Core/Inc/MPU6050.h \
+ ../Core/Inc/tim.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h \
  ../Core/Inc/FreeRTOSConfig.h \
@@ -39,7 +39,8 @@ Core/Src/WheelControls.o: ../Core/Src/WheelControls.c \
  ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h \
- ../Core/Inc/MotorControl.h ../Core/Inc/MPU6050.h ../Core/Inc/pid.h
+ ../Core/Inc/UARTComms.h ../Core/Inc/usart.h ../Core/Inc/verification.h \
+ ../Core/Inc/WheelControls.h ../Core/Inc/MPU6050.h ../Core/Inc/i2c.h
 ../Core/Inc/WheelControls.h:
 ../Core/Inc/main.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h:
@@ -71,7 +72,7 @@ Core/Src/WheelControls.o: ../Core/Src/WheelControls.c \
 ../Core/Inc/MotorControl.h:
 ../Core/Inc/pid.h:
 ../Core/Inc/struct.h:
-../Core/Inc/MPU6050.h:
+../Core/Inc/tim.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h:
 ../Core/Inc/FreeRTOSConfig.h:
@@ -83,6 +84,9 @@ Core/Src/WheelControls.o: ../Core/Src/WheelControls.c \
 ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h:
-../Core/Inc/MotorControl.h:
+../Core/Inc/UARTComms.h:
+../Core/Inc/usart.h:
+../Core/Inc/verification.h:
+../Core/Inc/WheelControls.h:
 ../Core/Inc/MPU6050.h:
-../Core/Inc/pid.h:
+../Core/Inc/i2c.h:

@@ -58,7 +58,7 @@ const osThreadAttr_t Comms_attributes = {
 osThreadId_t MotorHandle;
 const osThreadAttr_t Motor_attributes = {
   .name = "Motor",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for MPU6050 */

@@ -10,7 +10,6 @@
 
 #include "main.h"
 #include <math.h>
-#include "OLED.h"
 #include "i2c.h"
 #include "cmsis_os.h"
 
@@ -43,6 +42,8 @@
 
 #define MPU6050_Accel_Sensitivity_16G 2048.0f
 #define MPU6050_Gyro_Sensitivity_2000DPS 16.4f
+
+extern float MPU6050_yaw;
 
 void MPU6050_Init(void);
 void MPU6050_ReadAccel(int16_t *AccelX, int16_t *AccelY, int16_t *AccelZ);

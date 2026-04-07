@@ -12,13 +12,13 @@ Motor_HandleTypeDef Motor_FR;
 Motor_HandleTypeDef Motor_RL;
 Motor_HandleTypeDef Motor_RR;
 
-int32_t Encoder_FL = 0;
-int32_t Encoder_FR = 0;
+// int32_t Encoder_FL = 0;
+// int32_t Encoder_FR = 0;
 
 void MotorControl_Init(void)
 {
-    const fp32 position_pid_params[3] = {2.0f, 0.0f, 0.2f};
-    const fp32 speed_pid_params[3] = {2.8f, 0.1f, 0.0f};
+    const float position_pid_params[3] = {2.0f, 0.0f, 0.2f};
+    const float speed_pid_params[3] = {2.8f, 0.1f, 0.0f};
     
     Motor_FL.target_position = 0.0f;
     Motor_FL.current_position = 0.0f;
@@ -38,8 +38,8 @@ void MotorControl_Init(void)
     PID_init(&Motor_FR.position_pid, PID_POSITION, position_pid_params, Motor_Speed_Limit, Motor_Position_I_Limit);
     PID_init(&Motor_FR.velocity_pid, PID_POSITION, speed_pid_params, Motor_Power_Limit, Motor_Velocity_I_Limit);
 
-    HAL_TIM_PWM_Start(&Motor_FL_PWM_TIMEBASE, Motor_FL_PWM);
-    HAL_TIM_PWM_Start(&Motor_FR_PWM_TIMEBASE, Motor_FR_PWM);
+    HAL_TIM_PWM_Start(&Motor_FL_PWM_TIMEBASE, Motor_FL_PWM_CHANNEL);
+    HAL_TIM_PWM_Start(&Motor_FR_PWM_TIMEBASE, Motor_FR_PWM_CHANNEL);
 
     HAL_TIM_Encoder_Start(&Motor_FL_Encoder_Timebase, TIM_CHANNEL_ALL);
     HAL_TIM_Encoder_Start(&Motor_FR_Encoder_Timebase, TIM_CHANNEL_ALL);
@@ -147,17 +147,17 @@ void Motor_SetPWM(Motor_ID motor_id, uint16_t duty)
     switch(motor_id)
     {
         case Motor_FL_ID:
-            __HAL_TIM_SET_COMPARE(&Motor_FL_PWM_TIMEBASE, Motor_FL_PWM, duty);
+            __HAL_TIM_SET_COMPARE(&Motor_FL_PWM_TIMEBASE, Motor_FL_PWM_CHANNEL, duty);
             break;
         case Motor_FR_ID:
-            __HAL_TIM_SET_COMPARE(&Motor_FR_PWM_TIMEBASE, Motor_FR_PWM, duty);
+            __HAL_TIM_SET_COMPARE(&Motor_FR_PWM_TIMEBASE, Motor_FR_PWM_CHANNEL, duty);
             break;
         /*
         case Motor_RL_ID:
-            __HAL_TIM_SET_COMPARE(&Motor_RL_PWM_TIMEBASE, Motor_RL_PWM, duty);
+            __HAL_TIM_SET_COMPARE(&Motor_RL_PWM_TIMEBASE, Motor_RL_PWM_CHANNEL, duty);
             break;
         case Motor_RR_ID:
-            __HAL_TIM_SET_COMPARE(&Motor_RR_PWM_TIMEBASE, Motor_RR_PWM, duty);
+            __HAL_TIM_SET_COMPARE(&Motor_RR_PWM_TIMEBASE, Motor_RR_PWM_CHANNEL, duty);
             break;
         */
     }
@@ -186,12 +186,10 @@ void Motor_SetTargetPosition(Motor_ID motor_id, float target_position)
 {
     switch(motor_id)
     {
-        case Motor_FL_ID: Motor_FL.mode = MOTOR_CONTROL_POSITION;Motor_FL.target_position = target_position; break;
-        case Motor_FR_ID: Motor_FR.mode = MOTOR_CONTROL_POSITION;Motor_FR.target_position = target_position; break;
-        /*
-        case Motor_RL_ID: Motor_RL.mode = MOTOR_CONTROL_POSITION;Motor_RL.target_position = target_position; break;
-        case Motor_RR_ID: Motor_RR.mode = MOTOR_CONTROL_POSITION;Motor_RR.target_position = target_position; break;
-        */
+        case Motor_FL_ID: Motor_FL.mode = MOTOR_CONTROL_POSITION;Motor_FL.target_position = WHELL_FL_DIR * target_position; break;
+        case Motor_FR_ID: Motor_FR.mode = MOTOR_CONTROL_POSITION;Motor_FR.target_position = WHELL_FR_DIR * target_position; break;
+        case Motor_RL_ID: Motor_RL.mode = MOTOR_CONTROL_POSITION;Motor_RL.target_position = WHELL_RL_DIR * target_position; break;
+        case Motor_RR_ID: Motor_RR.mode = MOTOR_CONTROL_POSITION;Motor_RR.target_position = WHELL_RR_DIR * target_position; break;
     }
 }
 
@@ -199,12 +197,10 @@ void Motor_SetTargetVelocity(Motor_ID motor_id, float target_velocity)
 {
     switch(motor_id)
     {
-        case Motor_FL_ID: Motor_FL.mode = MOTOR_CONTROL_VELOCITY;Motor_FL.target_velocity = target_velocity; break;
-        case Motor_FR_ID: Motor_FR.mode = MOTOR_CONTROL_VELOCITY;Motor_FR.target_velocity = target_velocity; break;
-        /*
-        case Motor_RL_ID: Motor_RL.mode = MOTOR_CONTROL_VELOCITY;Motor_RL.target_velocity = target_velocity; break;
-        case Motor_RR_ID: Motor_RR.mode = MOTOR_CONTROL_VELOCITY;Motor_RR.target_velocity = target_velocity; break;
-        */
+        case Motor_FL_ID: Motor_FL.mode = MOTOR_CONTROL_VELOCITY;Motor_FL.target_velocity = WHELL_FL_DIR * target_velocity; break;
+        case Motor_FR_ID: Motor_FR.mode = MOTOR_CONTROL_VELOCITY;Motor_FR.target_velocity = WHELL_FR_DIR * target_velocity; break;
+        case Motor_RL_ID: Motor_RL.mode = MOTOR_CONTROL_VELOCITY;Motor_RL.target_velocity = WHELL_RL_DIR * target_velocity; break;
+        case Motor_RR_ID: Motor_RR.mode = MOTOR_CONTROL_VELOCITY;Motor_RR.target_velocity = WHELL_RR_DIR * target_velocity; break;
     }
 }
 int16_t Motor_FL_ReadEncoder(void)
@@ -235,7 +231,7 @@ int16_t Motor_RR_ReadEncoder(void)
     return count;
 }
 */
-uint8_t Motor_DirFactor(Motor_ID motor_id)
+int8_t Motor_DirFactor(Motor_ID motor_id)
 {
     switch(motor_id)
     {
@@ -263,7 +259,7 @@ static void Motor_UpdateMotor(Motor_HandleTypeDef* motor, Motor_ID id, int16_t e
     {
         motor->target_velocity = PID_calc(&motor->position_pid, motor->current_position, motor->target_position);
     }
-    float pwm = Motor_DirFactor(id) * PID_calc(&motor->velocity_pid, motor->current_velocity, motor->target_velocity);
+    float pwm = PID_calc(&motor->velocity_pid, motor->current_velocity, motor->target_velocity);
     Motor_Drive(id, pwm);
     motor->last_time = current_time;
 }
@@ -272,14 +268,14 @@ static void Motor_UpdateMotor(Motor_HandleTypeDef* motor, Motor_ID id, int16_t e
 void Motor_FL_Update(void)
 {
     int16_t delta = Motor_DirFactor(Motor_FL_ID)*Motor_FL_ReadEncoder();
-    Encoder_FL += delta;
+    // Encoder_FL += delta;
     Motor_UpdateMotor(&Motor_FL, Motor_FL_ID, delta);
 }
 
 void Motor_FR_Update(void)
 {
     int16_t delta = Motor_DirFactor(Motor_FR_ID)*Motor_FR_ReadEncoder();
-    Encoder_FR += delta;
+    // Encoder_FR += delta;
     Motor_UpdateMotor(&Motor_FR, Motor_FR_ID, delta);
 }
 
@@ -301,14 +297,22 @@ void Motor_RR_Update(void)
 
 void MotorTask(void const * argument)
 {
+    MotorControl_Init();
+    //HAL_GPIO_WritePin(STBY_GPIO_Port, STBY_Pin, GPIO_PIN_SET); // 使能电机驱动
   while(1)
   {
-    Motor_FL_Update();
-    Motor_FR_Update();
+     Motor_FL_Update();
+     Motor_FR_Update();
     /*
     Motor_RL_Update();
     Motor_RR_Update();
     */
+//    int16_t delta_fl = Motor_DirFactor(Motor_FL_ID)*Motor_FL_ReadEncoder();
+//    int16_t delta_fr = Motor_DirFactor(Motor_FR_ID)*Motor_FR_ReadEncoder();
+//    UARTComms_Transmmit_Data(&UARTComms_BT24_Port,0x01, (uint8_t*)&delta_fl, sizeof(delta_fl));
+//    UARTComms_Transmmit_Data(&UARTComms_BT24_Port,0x01, (uint8_t*)&delta_fr, sizeof(delta_fr));
+//    Motor_Drive(Motor_FL_ID, 25.0f);
+//    Motor_Drive(Motor_FR_ID, 25.0f);
     osDelay(CycleTime*1000);
   }
 }

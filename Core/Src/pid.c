@@ -1,11 +1,11 @@
 /**
   ****************************(C) COPYRIGHT 2019 DJI****************************
   * @file       pid.c/h
-  * @brief      pidÊµÏÖº¯Êý£¬°üÀ¨³õÊ¼»¯£¬PID¼ÆËãº¯Êý£¬
+  * @brief      pidÊµï¿½Öºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½PIDï¿½ï¿½ï¿½ãº¯ï¿½ï¿½ï¿½ï¿½
   * @note       
   * @history
   *  Version    Date            Author          Modification
-  *  V1.0.0     Dec-26-2018     RM              1. Íê³É
+  *  V1.0.0     Dec-26-2018     RM              1. ï¿½ï¿½ï¿½
   *
   @verbatim
   ==============================================================================
@@ -20,7 +20,7 @@
 #include "math.h"
 
 
-uint8_t  start_falg;
+// uint8_t  start_falg;
 fp32 fast=1.4;
 uint16_t  max_cnt =400;
 #define LimitMax(input, max)   \
@@ -47,12 +47,12 @@ uint16_t  max_cnt =400;
   */
 /**
   * @brief          pid struct data init
-  * @param[out]     pid: PID½á¹¹Êý¾ÝÖ¸Õë
-  * @param[in]      mode: PID_POSITION:ÆÕÍ¨PID
-  *                 PID_DELTA: ²î·ÖPID
+  * @param[out]     pid: PIDï¿½á¹¹ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½ï¿½
+  * @param[in]      mode: PID_POSITION:ï¿½ï¿½Í¨PID
+  *                 PID_DELTA: ï¿½ï¿½ï¿½PID
   * @param[in]      PID: 0: kp, 1: ki, 2:kd
-  * @param[in]      max_out: pid×î´óÊä³ö
-  * @param[in]      max_iout: pid×î´ó»ý·ÖÊä³ö
+  * @param[in]      max_out: pidï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+  * @param[in]      max_iout: pidï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
   * @retval         none
   */
 void PID_init(pid_type_def *pid, uint8_t mode, const fp32 PID[3], fp32 max_out, fp32 max_iout)
@@ -70,8 +70,11 @@ void PID_init(pid_type_def *pid, uint8_t mode, const fp32 PID[3], fp32 max_out, 
     pid->Dbuf[0] = pid->Dbuf[1] = pid->Dbuf[2] = 0.0f;
     pid->error[0] = pid->error[1] = pid->error[2] = pid->Pout = pid->Iout = pid->Dout = pid->out = 0.0f;
 		
-		pid->FAST = fast;
-		pid->reference[0] = pid->reference[1] = pid->reference[2] = 0.0f;
+	pid->FAST = fast;
+    pid->k = 1.0f;
+    pid->start_falg = 0;
+    pid->cnt = 0;
+	pid->reference[0] = pid->reference[1] = pid->reference[2] = 0.0f;
 		
 }
 
@@ -83,24 +86,24 @@ void PID_init(pid_type_def *pid, uint8_t mode, const fp32 PID[3], fp32 max_out, 
   * @retval         pid out
   */
 /**
-  * @brief          pid¼ÆËã
-  * @param[out]     pid: PID½á¹¹Êý¾ÝÖ¸Õë
-  * @param[in]      ref: ·´À¡Êý¾Ý
-  * @param[in]      set: Éè¶¨Öµ
-  * @retval         pidÊä³ö
+  * @brief          pidï¿½ï¿½ï¿½ï¿½
+  * @param[out]     pid: PIDï¿½á¹¹ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½ï¿½
+  * @param[in]      ref: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+  * @param[in]      set: ï¿½è¶¨Öµ
+  * @retval         pidï¿½ï¿½ï¿½
   */
 fp32 PID_calc(pid_type_def *pid, fp32 ref, fp32 set)
 {
 	if(pid->last_set != set)
 	{
-		start_falg =1;
+		pid->start_falg = 1;
 		pid->last_set = set;
 	}
-	if(start_falg)
+	if(pid->start_falg)
 	{
 		if(pid->cnt > max_cnt){
 			pid->cnt = 0;
-			start_falg = 0;
+			pid->start_falg = 0;
 		}
 		else
 			pid->cnt++;
@@ -123,7 +126,7 @@ fp32 PID_calc(pid_type_def *pid, fp32 ref, fp32 set)
 		pid->reference[0] = ref;
 		pid->fdb = (pid->reference[0] + pid->reference[1] + pid->reference[2]) / 3.0f;
     pid->error[0] = set - pid->fdb;
-		if(!start_falg){
+		if(!pid->start_falg){
 		if(fabs(pid->error[0]) > 100 && pid->cnt == 0&& pid->last_set!=0){
 			pid->k= pid->FAST;
 			pid->cnt ++;
@@ -172,8 +175,8 @@ fp32 PID_calc(pid_type_def *pid, fp32 ref, fp32 set)
   * @retval         none
   */
 /**
-  * @brief          pid Êä³öÇå³ý
-  * @param[out]     pid: PID½á¹¹Êý¾ÝÖ¸Õë
+  * @brief          pid ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+  * @param[out]     pid: PIDï¿½á¹¹ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½ï¿½
   * @retval         none
   */
 void PID_clear(pid_type_def *pid)

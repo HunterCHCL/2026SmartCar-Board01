@@ -45,12 +45,11 @@ void MPU6050_ReadYaw(float *gyroZ)
 {
     uint8_t data[2];
     int16_t gyroZ_raw;
-    
-    // 连续读取 Z 轴的高 8 位和低 8 位数据
+
     MPU6050_ReadMultiReg(MPU6050_GYRO_ZOUT_H, data, 2);
     gyroZ_raw = (int16_t)(data[0] << 8 | data[1]);
     
-    // 转换为实际的角速度(度/秒)。在此前配置量程为 ±2000dps 时，灵敏度为 16.4 LSB/(°/s)
+    // 转换为deg/s,灵敏度为 16.4 LSB/(°/s)
     *gyroZ = gyroZ_raw / MPU6050_Gyro_Sensitivity_2000DPS; 
 }
 
@@ -119,19 +118,17 @@ void MPU6050_ProcessYaw(float GyroZ, float *yaw, float GyroZ_Offset)
 {
     static uint32_t last_time = 0;
     
-    if (last_time == 0) {
+    if (last_time == 0)
+    {
         last_time = HAL_GetTick();
         return;
     }
     
     uint32_t now = HAL_GetTick();
-    float dt = (now - last_time) / 1000.0f; // 获取真实的系统差值时间(秒)
+    float dt = (now - last_time) / 1000.0f;//s
     last_time = now;
-    
-    // 获取扣除零偏后的真实角速度
     float true_rate = GyroZ - GyroZ_Offset;
-    
-    // 设置一个死区（例如 ±0.5 度/秒），消除由于微小噪声引起的静止漂移
+    // 死区
     if (true_rate > -0.5f && true_rate < 1.0f) {
         true_rate = 0;
     }
@@ -145,13 +142,11 @@ void MPU6050Task(void *argument)
 {
     MPU6050_Init();
     MPU6050_CalibrateGyroZ(&MPU6050_GyroZ_Offset);
-    OLED_Init();
     float GyroZ;
     while(1)
     {
         MPU6050_ReadYaw(&GyroZ);
         MPU6050_ProcessYaw(GyroZ, &MPU6050_yaw,MPU6050_GyroZ_Offset);
-        OLED_ShowFloat(1, 1, MPU6050_yaw, 2);
         osDelay(MPU6050_CYCLE_TIME); // 100Hz
     }
 }

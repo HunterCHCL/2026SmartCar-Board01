@@ -27,16 +27,17 @@ typedef struct
 {
     uint8_t mode;
 	
-		uint16_t cnt;
-    //PID ������
+	uint16_t cnt;
+    //PID 参数
     fp32 Kp;
     fp32 Ki;
     fp32 Kd;                                                                                     
 	
-		fp32 k;
-		fp32 FAST;
-	
-    fp32 max_out;  //������
+	fp32 k;
+	fp32 FAST;
+    uint8_t start_falg;
+
+    fp32 max_out;  //最大输出
     fp32 max_iout; //���������
 
     fp32 set; //Ŀ��ֵ
