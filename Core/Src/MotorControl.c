@@ -309,8 +309,8 @@ void MotorTask(void const * argument)
     */
 //    int16_t delta_fl = Motor_DirFactor(Motor_FL_ID)*Motor_FL_ReadEncoder();
 //    int16_t delta_fr = Motor_DirFactor(Motor_FR_ID)*Motor_FR_ReadEncoder();
-//    UARTComms_Transmmit_Data(&UARTComms_BT24_Port,0x01, (uint8_t*)&delta_fl, sizeof(delta_fl));
-//    UARTComms_Transmmit_Data(&UARTComms_BT24_Port,0x01, (uint8_t*)&delta_fr, sizeof(delta_fr));
+//    UARTComms_Transmit_Data(&UARTComms_BT24_Port,0x01, (uint8_t*)&delta_fl, sizeof(delta_fl));
+//    UARTComms_Transmit_Data(&UARTComms_BT24_Port,0x01, (uint8_t*)&delta_fr, sizeof(delta_fr));
 //    Motor_Drive(Motor_FL_ID, 25.0f);
 //    Motor_Drive(Motor_FR_ID, 25.0f);
     osDelay(CycleTime*1000);

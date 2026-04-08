@@ -1,7 +1,8 @@
 ../Core/Src/WheelControls.c:15:20:TransformCoordinates	2
 ../Core/Src/WheelControls.c:37:6:Car_UpdateTarget	5
-../Core/Src/WheelControls.c:65:6:Car_RemoteControl	7
-../Core/Src/WheelControls.c:146:13:Car_Turn	4
-../Core/Src/WheelControls.c:168:13:Car_Move	1
-../Core/Src/WheelControls.c:177:13:Car_Coast	1
-../Core/Src/WheelControls.c:190:6:CarControlTask	6
+../Core/Src/WheelControls.c:65:6:Car_RemoteControl	13
+../Core/Src/WheelControls.c:137:13:Car_Turn	4
+../Core/Src/WheelControls.c:159:13:Car_Move	1
+../Core/Src/WheelControls.c:168:13:Car_Coast	1
+../Core/Src/WheelControls.c:177:6:Car_Rotating_Coast	1
+../Core/Src/WheelControls.c:187:6:CarControlTask	7

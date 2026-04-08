@@ -31,7 +31,8 @@ typedef enum{
     CAR_CONTROL_TURN,
     CAR_CONTROL_MOVE,
     CAR_CONTROL_COAST,
-    CAR_CONTROL_TEST
+    CAR_CONTROL_TEST,
+    CAR_CONTROL_ROTATING_COAST
 } CarControlMode;
 
 typedef struct{

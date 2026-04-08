@@ -32,7 +32,7 @@ static void MPU6050_ReadMultiReg(uint8_t RegAdress, uint8_t *Data, uint16_t Leng
 */
 void MPU6050_Init(void)
 {
-    HAL_Delay(100);
+    osDelay(100);
     MPU6050_WriteReg(MPU6050_PWR_MGMT_1, 0x01);     // 电源管理寄存器1，取消睡眠模式，时钟源为X轴陀螺仪
 	MPU6050_WriteReg(MPU6050_PWR_MGMT_2, 0x00);		// 电源管理寄存器2，所有轴均不待机
 	MPU6050_WriteReg(MPU6050_SMPLRT_DIV, 0x09);		// 100Hz
@@ -108,7 +108,7 @@ void MPU6050_CalibrateGyroZ(float *GyroZ_Offset)
         MPU6050_ReadMultiReg(MPU6050_GYRO_ZOUT_H, data, 2);
         gyroZ_raw = (int16_t)(data[0] << 8 | data[1]);
         gz += gyroZ_raw;
-        HAL_Delay(10);
+        // osDelay(10);
     }
 
     *GyroZ_Offset = (gz / (float)num_samples) / MPU6050_Gyro_Sensitivity_2000DPS;
@@ -143,10 +143,16 @@ void MPU6050Task(void *argument)
     MPU6050_Init();
     MPU6050_CalibrateGyroZ(&MPU6050_GyroZ_Offset);
     float GyroZ;
+//    uint8_t i=0;
     while(1)
     {
         MPU6050_ReadYaw(&GyroZ);
         MPU6050_ProcessYaw(GyroZ, &MPU6050_yaw,MPU6050_GyroZ_Offset);
+//        if(i++==100)
+//        {
+//            i=0;
+//            UARTComms_Transmit_Data(&UARTComms_BT24_Port, 0x20, (uint8_t*)&MPU6050_yaw, sizeof(MPU6050_yaw));
+//        }
         osDelay(MPU6050_CYCLE_TIME); // 100Hz
     }
 }

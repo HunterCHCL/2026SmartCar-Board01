@@ -12,6 +12,7 @@
 #include <math.h>
 #include "i2c.h"
 #include "cmsis_os.h"
+#include "UARTComms.h"
 
 #define MPU6050Addr 0xD0
 

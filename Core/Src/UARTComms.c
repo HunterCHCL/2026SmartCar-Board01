@@ -21,7 +21,7 @@ uint8_t BT24globalBuffer[50];
 uint8_t BT24receivedData[48];
 uint8_t BT24receivedCMD;
 
-void UARTComms_Transmmit_Data(UART_HandleTypeDef *UARTPort,uint8_t cmd,uint8_t *data,uint8_t len)
+void UARTComms_Transmit_Data(UART_HandleTypeDef *UARTPort,uint8_t cmd,uint8_t *data,uint8_t len)
 {
 	globalBuffer[0]=cmd;
 	memcpy(&globalBuffer[1], data, len);
@@ -105,7 +105,7 @@ void CommsTask(void *argument)
     float alpha=0, beta=0;
     uint32_t flags;
     uint8_t buffer[]={'h','e','l','l','o'};
-    UARTComms_Transmmit_Data(&UARTComms_BT24_Port, 0x01, buffer, sizeof(buffer));
+    UARTComms_Transmit_Data(&UARTComms_BT24_Port, 0x01, buffer, sizeof(buffer));
     while(1)
     {
         flags = osThreadFlagsWait(COMMS_SIGNAL_RECEIVED, osFlagsWaitAny, osWaitForever);
@@ -132,7 +132,7 @@ void CommsTask(void *argument)
                 Car_Control.target_position.x = alpha;
                 Car_Control.target_position.y = beta;
                 Car_Control.mode = CAR_CONTROL_MOVE;
-                // UARTComms_Transmmit_Data(&UARTComms_Port, 0x2A, 0x00, 1);//重置编码器
+                // UARTComms_Transmit_Data(&UARTComms_Port, 0x2A, 0x00, 1);//重置编码器
             }
             else if(BT24receivedCMD == 0xB1)//遥控模式
             {
@@ -145,7 +145,7 @@ void CommsTask(void *argument)
                 Car_Control.mode = CAR_CONTROL_COAST;
                 Car_RemoteControl(&Remote_Control_Input);
             }
-            else if(BT24receivedCMD == 0xB2)//设置遥控速度
+            else if(BT24receivedCMD == 0xB2)//遥控终止
             {
                 Remote_Control_Input.Forward=0;
                 Remote_Control_Input.Left=0;
@@ -154,6 +154,16 @@ void CommsTask(void *argument)
                 Remote_Control_Input.RotateLeft=0;
                 Remote_Control_Input.RotateRight=0;
                 Car_Control.mode = CAR_CONTROL_COAST;
+                Car_RemoteControl(&Remote_Control_Input);
+            }
+            else if(BT24receivedCMD == 0xB3)
+            {
+                memcpy(&Remote_Control_Input.Forward, &BT24receivedData[0], 1);
+                memcpy(&Remote_Control_Input.Left, &BT24receivedData[1], 1);
+                memcpy(&Remote_Control_Input.Backward, &BT24receivedData[2], 1);
+                memcpy(&Remote_Control_Input.Right, &BT24receivedData[3], 1);
+                memcpy(&Car_Control.target_rotationSpeed, &BT24receivedData[4], 4);
+                Car_Control.mode = CAR_CONTROL_ROTATING_COAST;
                 Car_RemoteControl(&Remote_Control_Input);
             }
             else if(BT24receivedCMD == 0xC1)
@@ -208,17 +218,18 @@ void CommsTask(void *argument)
             }
             else if(BT24receivedCMD == 0xE1)
             {
-                UARTComms_Transmmit_Data(&UARTComms_Port, 0x1A,BT24receivedData, 8);
+                UARTComms_Transmit_Data(&UARTComms_Port, 0x1A,BT24receivedData, 8);
             }
             else if(BT24receivedCMD == 0xE2)
             {
-                UARTComms_Transmmit_Data(&UARTComms_Port, 0x1B, BT24receivedData, 8);
+                UARTComms_Transmit_Data(&UARTComms_Port, 0x1B, BT24receivedData, 8);
             }
             BT24receivedCMD = 0;
             if(receivedCMD == 0xF1)
             {
-                UARTComms_Transmmit_Data(&UARTComms_BT24_Port, 0xF1, receivedData, 8);
+                UARTComms_Transmit_Data(&UARTComms_BT24_Port, 0xF1, receivedData, 8);
             }
+            
         }
     }
 }

@@ -15,8 +15,8 @@
 
 #define Motor_Speed_Limit 30.0f // cm/s
 #define Motor_Position_I_Limit 15.0f
-#define Motor_Power_Limit 36.0f// 100% PWM
-#define Motor_Velocity_I_Limit 10.0f
+#define Motor_Power_Limit 144.0f// 100% PWM
+#define Motor_Velocity_I_Limit 50.0f
 
 #define Motor_Transmission_Ratio 34
 #define Motor_Encoder_Resolution 13

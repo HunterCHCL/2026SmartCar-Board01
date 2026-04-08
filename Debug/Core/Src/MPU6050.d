@@ -36,7 +36,10 @@ Core/Src/MPU6050.o: ../Core/Src/MPU6050.c ../Core/Inc/MPU6050.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h
+ ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h \
+ ../Core/Inc/UARTComms.h ../Core/Inc/usart.h ../Core/Inc/verification.h \
+ ../Core/Inc/WheelControls.h ../Core/Inc/MotorControl.h ../Core/Inc/pid.h \
+ ../Core/Inc/struct.h ../Core/Inc/tim.h ../Core/Inc/MPU6050.h
 ../Core/Inc/MPU6050.h:
 ../Core/Inc/main.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h:
@@ -77,3 +80,12 @@ Core/Src/MPU6050.o: ../Core/Src/MPU6050.c ../Core/Inc/MPU6050.h \
 ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h:
+../Core/Inc/UARTComms.h:
+../Core/Inc/usart.h:
+../Core/Inc/verification.h:
+../Core/Inc/WheelControls.h:
+../Core/Inc/MotorControl.h:
+../Core/Inc/pid.h:
+../Core/Inc/struct.h:
+../Core/Inc/tim.h:
+../Core/Inc/MPU6050.h:
